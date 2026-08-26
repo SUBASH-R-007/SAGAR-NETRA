@@ -48,6 +48,11 @@ def diff_surveys(
         "n_b": len(b_contacts),
         "new_contacts": [c.model_dump(mode="json") for c in new],
         "matched": [
-            {"b": b.id, "a": a.id, "distance_m": round(d, 1)} for b, a, d in matched
+            {
+                "b": b.model_dump(mode="json"),
+                "a": a.model_dump(mode="json"),
+                "distance_m": round(d, 1),
+            }
+            for b, a, d in matched
         ],
     }
