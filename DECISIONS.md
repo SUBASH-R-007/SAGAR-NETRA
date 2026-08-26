@@ -81,6 +81,18 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
 3. **Severity is explainable by construction:** every contact carries its per-term breakdown
    (hazard/size/height/depth/proximity + nearest layer and distance).
 
+## M6 — Dashboard
+
+1. **No deck.gl.** The spec named deck.gl for the heatmap; `leaflet.heat` (8 kB) delivers the same
+   severity heatmap without a ~1 MB WebGL dependency that fights Leaflet for the canvas. Noted as
+   a deliberate deviation.
+2. **Client-side filtering** over the survey's contact fetch (limit 500) instead of re-querying per
+   filter change: instant, consistent across Map/Waterfall/Contacts tabs; server-side filters
+   remain available on the endpoint for large deployments.
+3. **Offline map story:** the backend proxies and disk-caches OSM tiles (`/tiles/{z}/{x}/{y}.png`);
+   once an area has been viewed online it renders offline forever, and with no cache the proxy
+   serves a neutral sea-grid tile so the map stays usable.
+
 ## M7 — Intelligence
 
 1. **Anomaly brain masks a nadir guard (32 columns).** The slant-to-ground stretch zone next to

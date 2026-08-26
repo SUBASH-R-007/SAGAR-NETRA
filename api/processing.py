@@ -47,10 +47,31 @@ class DetectorLike(Protocol):
     def detect_tiles(self, tiles: list, progress: Any = None) -> list: ...
 
 
-def _default_detector_factory() -> DetectorLike:
-    from tridentnet.detector import Detector
+class _CombinedBrains:
+    """Default TridentNet stack: Brain A always, Brain C when weights exist,
+    fused by the ensemble merger (corroboration + open-set anomalies)."""
 
-    return Detector()
+    def __init__(self) -> None:
+        from tridentnet.detector import Detector
+
+        self.brain_a = Detector()
+        try:
+            from tridentnet.anomaly import AnomalyDetector
+
+            self.brain_c: Any = AnomalyDetector()
+        except (FileNotFoundError, ImportError):
+            self.brain_c = None  # anomaly weights not trained yet: A-only mode
+
+    def detect_tiles(self, tiles: list, progress: Any = None) -> list:
+        from tridentnet.ensemble import merge_brains
+
+        detections = self.brain_a.detect_tiles(tiles, progress=progress)
+        blobs = self.brain_c.detect_tiles(tiles) if self.brain_c is not None else None
+        return merge_brains(detections, blobs)
+
+
+def _default_detector_factory() -> DetectorLike:
+    return _CombinedBrains()
 
 
 def _band_progress(update: ProgressFn | None, stage: str, message: str = ""):

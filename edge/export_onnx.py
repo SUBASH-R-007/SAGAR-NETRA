@@ -37,24 +37,28 @@ def raw_parity(weights: Path, onnx_path: Path, imgsz: int, n_tiles: int = 4) -> 
     from ultralytics import YOLO
 
     rng = np.random.default_rng(0)
-    batch = rng.random((n_tiles, 3, imgsz, imgsz), dtype=np.float32)
-
     torch_model = YOLO(str(weights)).model.eval()
-    with torch.no_grad():
-        torch_out = torch_model(torch.from_numpy(batch))[0].numpy()
-
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     input_name = session.get_inputs()[0].name
-    onnx_out = session.run(None, {input_name: batch})[0]
 
-    return float(np.max(np.abs(torch_out - onnx_out)))
+    # The export is static batch-1; compare tile by tile.
+    worst = 0.0
+    for _ in range(n_tiles):
+        tile = rng.random((1, 3, imgsz, imgsz), dtype=np.float32)
+        with torch.no_grad():
+            torch_out = torch_model(torch.from_numpy(tile))[0].numpy()
+        onnx_out = session.run(None, {input_name: tile})[0]
+        worst = max(worst, float(np.max(np.abs(torch_out - onnx_out))))
+    return worst
 
 
 def map_parity(weights: Path, onnx_path: Path, data_yaml: Path, imgsz: int) -> tuple[float, float]:
     from ultralytics import YOLO
 
+    # rect=False: the .pt path would otherwise use rectangular val batches
+    # while the static ONNX runs square inputs — an apples-to-oranges mAP.
     kwargs = dict(data=str(data_yaml), imgsz=imgsz, device="cpu", workers=0,
-                  plots=False, verbose=False)
+                  plots=False, verbose=False, rect=False)
     map_pt = float(YOLO(str(weights)).val(**kwargs).box.map50)
     map_onnx = float(YOLO(str(onnx_path)).val(**kwargs).box.map50)
     return map_pt, map_onnx

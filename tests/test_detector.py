@@ -1,4 +1,4 @@
-"""TridentNet Brain A (Ultralytics detector wrapper) tests.
+﻿"""TridentNet Brain A (Ultralytics detector wrapper) tests.
 
 No training happens here. The only test touching real model weights is the
 smoke test, which auto-downloads yolov8n.pt and skips if that fails; the
@@ -14,10 +14,17 @@ from typing import Any
 
 import numpy as np
 import pytest
+import yaml
 
 import tridentnet.detector as detector_mod
 from sonar_core.preprocess.tiler import Tile
 from tridentnet.detector import Detection, Detector, box_iou, merge_detections
+
+
+def _yaml_imgsz() -> int:
+    """imgsz as configured in configs/detector.yaml — the source of truth an
+    un-overridden Detector must inherit."""
+    return int(yaml.safe_load(detector_mod.CONFIG_PATH.read_text(encoding="utf-8"))["imgsz"])
 
 
 def make_det(
@@ -310,7 +317,7 @@ class TestRealModelSmoke:
         image = (0.15 + 0.05 * rng.random((640, 640))).astype(np.float32)
         # Bright blob with a dark "shadow" toward increasing column, the way a
         # proud sonar target presents; enough contrast that the COCO model may
-        # or may not fire — the assertions hold either way.
+        # or may not fire â€” the assertions hold either way.
         image[280:360, 200:280] = 0.95
         image[280:360, 280:420] = 0.03
         image[:, 600:] = np.nan  # swath edge
@@ -372,5 +379,5 @@ class TestConstruction:
         det = Detector(weights="unused.pt", config={"conf": 0.5, "batch": 2})
         assert det.config["conf"] == 0.5
         assert det.config["batch"] == 2
-        assert det.config["imgsz"] == 640  # YAML/default survives partial override
+        assert det.config["imgsz"] == _yaml_imgsz()  # YAML/default survives partial override
         assert det.config["dedup_iou"] == 0.45
