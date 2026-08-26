@@ -1,0 +1,99 @@
+{
+  "scene": {
+    "n_pings": 1200,
+    "n_samples": 1024,
+    "slant_range_m": 50.0,
+    "mean_altitude_m": 8.0,
+    "seed": 26057
+  },
+  "targets": [
+    {
+      "cls": "wreck",
+      "side": "starboard",
+      "ping": 192,
+      "ground_range": 27.0,
+      "length": 24.0,
+      "width": 6.0,
+      "height": 4.2,
+      "reflectivity": 5.5,
+      "natural": false
+    },
+    {
+      "cls": "ghost_net",
+      "side": "port",
+      "ping": 348,
+      "ground_range": 18.0,
+      "length": 6.0,
+      "width": 3.2,
+      "height": 1.3,
+      "reflectivity": 3.2,
+      "natural": false
+    },
+    {
+      "cls": "cylinder_drum",
+      "side": "starboard",
+      "ping": 516,
+      "ground_range": 33.0,
+      "length": 1.4,
+      "width": 0.9,
+      "height": 0.9,
+      "reflectivity": 6.5,
+      "natural": false
+    },
+    {
+      "cls": "tire",
+      "side": "port",
+      "ping": 636,
+      "ground_range": 12.5,
+      "length": 1.1,
+      "width": 1.1,
+      "height": 0.35,
+      "reflectivity": 3.5,
+      "natural": false
+    },
+    {
+      "cls": "container",
+      "side": "starboard",
+      "ping": 804,
+      "ground_range": 21.0,
+      "length": 6.1,
+      "width": 2.4,
+      "height": 2.4,
+      "reflectivity": 6.0,
+      "natural": false
+    },
+    {
+      "cls": "mine_like",
+      "side": "port",
+      "ping": 936,
+      "ground_range": 26.0,
+      "length": 0.8,
+      "width": 0.8,
+      "height": 0.5,
+      "reflectivity": 7.0,
+      "natural": false
+    },
+    {
+      "cls": "rock_cluster",
+      "side": "starboard",
+      "ping": 396,
+      "ground_range": 15.0,
+      "length": 4.0,
+      "width": 3.0,
+      "height": 0.8,
+      "reflectivity": 2.6,
+      "natural": true
+    },
+    {
+      "cls": "rock_cluster",
+      "side": "port",
+      "ping": 1056,
+      "ground_range": 30.0,
+      "length": 5.0,
+      "width": 3.5,
+      "height": 1.0,
+      "reflectivity": 2.4,
+      "natural": true
+    }
+  ]
+}
