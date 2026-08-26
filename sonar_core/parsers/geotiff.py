@@ -83,5 +83,6 @@ class GeoTIFFParser(SonarParser):
                 "ground_range": True,
                 "crs": str(crs),
                 "pixel_size": pixel_size,
+                "ground_res": pixel_size,
             },
         )

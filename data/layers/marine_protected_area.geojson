@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "name": "marine_protected_area",
+  "description": "DEMO geometry — coastal conservation zone south of the survey box (illustrative)",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Coastal Conservation Zone (demo)", "kind": "mpa" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [80.300, 13.020],
+          [80.360, 13.012],
+          [80.362, 12.980],
+          [80.302, 12.990],
+          [80.300, 13.020]
+        ]]
+      }
+    }
+  ]
+}

@@ -26,7 +26,10 @@ ml = [
     "torch>=2.1",
     "torchvision>=0.16",
     "opencv-python-headless>=4.8",
-    "albumentations>=1.3",
+    # Pinned: newer albumentations/albucore pull stringzilla, which has no
+    # Windows wheel and ICEs MSVC 2019 when built from source.
+    "albumentations==1.4.15",
+    "albucore==0.0.16",
     "grad-cam>=1.5",
 ]
 geo = [

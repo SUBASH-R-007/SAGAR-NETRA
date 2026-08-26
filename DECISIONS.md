@@ -26,7 +26,13 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
    spec-following writer. Field offsets follow the EdgeTech JSF rev. 1.20 description.
 6. **Windows-first dev environment** (this machine), Linux via docker-compose. All paths handled
    with `pathlib`; no shell-outs in library code.
-7. **Port/starboard convention.** In waterfall renderings, port is mirrored so its far range is at
+7. **Dependency pin: `albumentations==1.4.15` + `albucore==0.0.16`.** Newer releases depend on
+   `stringzilla`, which ships no Windows wheel and hits an MSVC 2019 internal compiler error when
+   built from source. The pinned pair installs cleanly everywhere we target.
+8. **Bundled sample is committed AND regenerable.** `data/samples/survey_alpha.xtf` (5.4 MB) is
+   checked in for instant demos; `scripts/make_sample_xtf.py` regenerates it byte-identically
+   from the seed, so it can be deleted from history at any time without loss.
+9. **Port/starboard convention.** In waterfall renderings, port is mirrored so its far range is at
    the image's left edge and both nadirs meet at the image centerline — matching common survey
    software (SonarWiz/Chesapeake) display convention. Column→(side, sample) bookkeeping lives in
    one place (`sonar_core/waterfall.py`) so pixel→ping/sample mapping stays exact.
