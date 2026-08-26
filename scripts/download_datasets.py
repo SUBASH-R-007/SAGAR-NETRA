@@ -189,14 +189,25 @@ def fetch(spec: DatasetSpec, timeout_s: float = DEFAULT_TIMEOUT_S) -> bool:
     if dest.exists() and dest.stat().st_size > 0:
         print(f"[{spec.name}] archive already present: {dest}")
     else:
+        # Download to a temp name and rename on success so an interrupted run
+        # (Ctrl+C included) can never leave a truncated file that a later run
+        # would mistake for a complete archive.
+        part = dest.with_suffix(dest.suffix + ".part")
         print(f"[{spec.name}] downloading {spec.url}")
         try:
-            _download(spec.url, dest, timeout_s)
-        except (urllib.error.URLError, OSError, ValueError) as exc:
+            _download(spec.url, part, timeout_s)
+            part.replace(dest)
+        except BaseException as exc:
+            part.unlink(missing_ok=True)
+            if not isinstance(exc, (urllib.error.URLError, OSError, ValueError)):
+                raise
             print(f"[{spec.name}] WARNING: download failed ({exc}); skipping")
-            dest.unlink(missing_ok=True)
             return False
 
+    if dest.suffix.lower() == ".zip" and not zipfile.is_zipfile(dest):
+        print(f"[{spec.name}] WARNING: {dest.name} is not a valid zip (corrupt "
+              f"download?) — delete it and rerun")
+        return False
     if zipfile.is_zipfile(dest):
         print(f"[{spec.name}] extracting {dest.name}")
         try:

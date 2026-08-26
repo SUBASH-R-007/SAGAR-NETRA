@@ -245,6 +245,20 @@ def train(params: RunParams) -> int:
         # highlights (see module docstring). Along-track flips are valid.
         fliplr=0.0,
         flipud=ALONG_TRACK_FLIP_P,
+        # Geometric augmentation policy, explicit rather than inherited:
+        # ISOTROPIC scale is physically valid (it is exactly a different
+        # ground resolution / survey range setting) and translate is a window
+        # shift, so both stay on; mosaic stitches crops without mirroring and
+        # is kept for small-object benefit. What sonar physics forbids —
+        # mirroring across columns, rotation, shear, perspective — stays 0
+        # (rotation/shear/perspective are Ultralytics defaults 0.0 but pinned
+        # here so a future default change cannot silently break the rule).
+        scale=0.3,
+        translate=0.1,
+        mosaic=1.0,
+        degrees=0.0,
+        shear=0.0,
+        perspective=0.0,
     )
     t_train = time.perf_counter() - t0
 

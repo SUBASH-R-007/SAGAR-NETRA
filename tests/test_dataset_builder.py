@@ -125,8 +125,13 @@ def test_label_geometry_single_known_target(tmp_path: Path) -> None:
     ground_res = slant_range / n_samples
     expected_row = target.ping + 0.5
     expected_col = target.ground_range / ground_res
-    assert abs(r_off + cy * win_h - expected_row) <= 25.0
-    assert abs(c_off + cx * win_w - expected_col) <= 25.0
+    # Tight tolerances pin the coordinate chain: rows must be exact to the
+    # sub-pixel; the column centre is deliberately offset DOWN-range by half
+    # the shadow pad (the label includes the near shadow edge), so the offset
+    # must be positive and bounded by the pad, never up-range.
+    assert abs(r_off + cy * win_h - expected_row) <= 2.0
+    col_offset = (c_off + cx * win_w) - expected_col
+    assert 0.0 <= col_offset <= 4.0, f"label centre off across-track by {col_offset:.1f} px"
 
 
 def test_split_is_by_scene(tiny_dataset: tuple[Path, Path]) -> None:

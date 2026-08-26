@@ -465,7 +465,9 @@ def build_synthetic_dataset(
         n_val = 0
     else:
         n_val = max(1, round(val_frac * n_scenes))
-        n_val = min(n_val, max(n_scenes - 1, 1))
+        # The train split must never be empty: a single-scene build gets no
+        # val scenes rather than sending its only scene to val.
+        n_val = min(n_val, n_scenes - 1)
     val_scenes = {int(i) for i in np.random.default_rng(seed).permutation(n_scenes)[:n_val]}
 
     for scene_idx in range(n_scenes):
