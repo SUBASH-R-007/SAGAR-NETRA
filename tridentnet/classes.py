@@ -27,10 +27,14 @@ CLASS_NAMES: Final[tuple[str, ...]] = (
 
 HARD_NEGATIVES: Final[frozenset[str]] = frozenset({"rock_cluster", "sand_ripple", "reef"})
 
+#: Ensemble-level label for open-set finds (Brain C reconstruction-error blobs
+#: with no detector class). Not a detector training class.
+ANOMALY_CLASS: Final[str] = "unknown_anomaly"
+
 #: Classes that may be shown to the user.
 REPORTABLE: Final[tuple[str, ...]] = tuple(
     name for name in CLASS_NAMES if name not in HARD_NEGATIVES
-)
+) + (ANOMALY_CLASS,)
 
 CLASS_TO_ID: Final[dict[str, int]] = {name: i for i, name in enumerate(CLASS_NAMES)}
 ID_TO_CLASS: Final[dict[int, str]] = dict(enumerate(CLASS_NAMES))

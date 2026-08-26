@@ -1,0 +1,17 @@
+# SAGAR-NETRA TridentNet Brain A (Ultralytics detector) configuration.
+#
+# This file mirrors tridentnet.detector.DEFAULTS line for line and is
+# deep-merged over it; a config dict passed to Detector(config=...) is merged
+# on top of both. Omit any key to keep the code default.
+
+model: yolov8n.pt   # fallback checkpoint when weights/detector.pt is absent; a bare
+                    # Ultralytics asset name auto-downloads (COCO classes, smoke tests only)
+imgsz: 640          # inference size (pixels); tiles are letterboxed to this square
+conf: 0.25          # minimum box confidence kept per tile (0-1)
+iou: 0.5            # NMS IoU inside a single tile, applied by Ultralytics (0-1)
+dedup_iou: 0.45     # cross-tile duplicate suppression IoU in GLOBAL (ping, column)
+                    # coordinates; SAHI tile overlap makes boundary targets fire in
+                    # up to four tiles, so global NMS must run after tile mapping (0-1)
+max_det: 100        # detection cap per tile; debris fields are sparse, so anything
+                    # denser is clutter/ripple false fire (count)
+batch: 8            # tiles per predict() call; bounds peak memory on CPU/edge boxes (tiles)

@@ -37,6 +37,13 @@ class SynthTarget:
     height: float  # proud height above seabed, m
     reflectivity: float = 4.0  # highlight multiplier over background
     natural: bool = False  # hard negative (rock etc.), not man-made
+    shape: str = "rect"  # footprint: "rect" | "ellipse" | "irregular"
+
+    def half_width_at(self, dp: float) -> float:
+        """Across-track half-extent at normalized along-track offset dp in [-1, 1]."""
+        if self.shape == "rect":
+            return self.width / 2.0
+        return (self.width / 2.0) * float(np.sqrt(max(1.0 - dp * dp, 0.0)))
 
     def shadow_extent(self, altitude: float) -> tuple[float, float]:
         """(shadow start, shadow end) in ground range, from ray geometry."""
@@ -80,22 +87,37 @@ def default_targets(cfg: SceneConfig) -> list[SynthTarget]:
 
     return [
         SynthTarget("wreck", "starboard", at(0.16), 27.0, 24.0, 6.0, 4.2, reflectivity=5.5),
-        SynthTarget("ghost_net", "port", at(0.29), 18.0, 6.0, 3.2, 1.3, reflectivity=3.2),
         SynthTarget(
-            "cylinder_drum", "starboard", at(0.43), 33.0, 1.4, 0.9, 0.9, reflectivity=6.5
+            "ghost_net", "port", at(0.29), 18.0, 6.0, 3.2, 1.3,
+            reflectivity=3.2, shape="irregular",
         ),
-        SynthTarget("tire", "port", at(0.53), 12.5, 1.1, 1.1, 0.35, reflectivity=3.5),
+        SynthTarget(
+            "cylinder_drum", "starboard", at(0.43), 33.0, 1.4, 0.9, 0.9,
+            reflectivity=6.5, shape="ellipse",
+        ),
+        SynthTarget(
+            "tire", "port", at(0.53), 12.5, 1.1, 1.1, 0.35, reflectivity=3.5, shape="ellipse"
+        ),
         SynthTarget("container", "starboard", at(0.67), 21.0, 6.1, 2.4, 2.4, reflectivity=6.0),
-        SynthTarget("mine_like", "port", at(0.78), 26.0, 0.8, 0.8, 0.5, reflectivity=7.0),
+        SynthTarget(
+            "mine_like", "port", at(0.78), 26.0, 0.8, 0.8, 0.5, reflectivity=7.0, shape="ellipse"
+        ),
         SynthTarget(
             "rock_cluster", "starboard", at(0.33), 15.0, 4.0, 3.0, 0.8,
-            reflectivity=2.6, natural=True,
+            reflectivity=2.6, natural=True, shape="irregular",
         ),
         SynthTarget(
             "rock_cluster", "port", at(0.88), 30.0, 5.0, 3.5, 1.0,
-            reflectivity=2.4, natural=True,
+            reflectivity=2.4, natural=True, shape="irregular",
         ),
     ]
+
+
+def _hash_noise(ping: int, ground: np.ndarray, salt: int) -> np.ndarray:
+    """Deterministic pseudo-noise in [0, 1) per (ping, ground-position) —
+    stable across runs so irregular targets render identically for a seed."""
+    x = np.sin(ground * 12.9898 + ping * 78.233 + salt * 37.719) * 43758.5453
+    return x - np.floor(x)
 
 
 def _smooth_noise(shape: tuple[int, int], sigma: float, rng: np.random.Generator) -> np.ndarray:
@@ -193,23 +215,34 @@ def make_scene(
                 ) / ripple_lambda
                 reflect *= 1.0 + 0.30 * band * np.sin(phase)
 
-            # Seeded targets: highlight then ray-traced shadow.
+            # Seeded targets: highlight then ray-traced shadow. The shadow is
+            # cast from the footprint's own far edge at THIS ping, so
+            # non-rectangular objects get correctly tapering shadows.
             for t in side_targets:
                 half_len_pings = max(t.length / (2 * cfg.speed * cfg.ping_interval), 1.0)
                 dp = (i - t.ping) / half_len_pings
                 if abs(dp) > 1.0:
                     continue
                 along_falloff = float(np.cos(dp * np.pi / 2) ** 0.5)
-                x0 = t.ground_range - t.width / 2
-                x1 = t.ground_range + t.width / 2
+                half_w = t.half_width_at(dp)
+                if half_w <= 0:
+                    continue
+                x0 = t.ground_range - half_w
+                x1 = t.ground_range + half_w
                 in_obj = (ground >= x0) & (ground <= x1)
                 if in_obj.any():
                     # Leading (near-nadir) edge returns hardest.
-                    edge = np.clip(1.4 - 0.8 * (ground - x0) / max(t.width, 1e-3), 0.6, 1.4)
+                    edge = np.clip(1.4 - 0.8 * (ground - x0) / max(2 * half_w, 1e-3), 0.6, 1.4)
                     boost = 1.0 + (t.reflectivity - 1.0) * along_falloff * edge
+                    if t.shape == "irregular":
+                        # Clumpy texture (net piles, rock clusters): modulate the
+                        # highlight with deterministic per-position noise.
+                        texture = 0.55 + 0.9 * _hash_noise(i, ground, t.ping)
+                        boost = 1.0 + (boost - 1.0) * texture
                     reflect = np.where(in_obj, reflect * boost, reflect)
-                s0, s1 = t.shadow_extent(alt)
-                in_shadow = (ground > s0) & (ground <= s1)
+                h = min(t.height, 0.95 * alt)
+                x_end = x1 * alt / (alt - h)
+                in_shadow = (ground > x1) & (ground <= x_end)
                 if in_shadow.any():
                     shade = 1.0 - (1.0 - cfg.shadow_level) * along_falloff
                     reflect = np.where(in_shadow, reflect * shade, reflect)

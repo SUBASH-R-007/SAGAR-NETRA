@@ -12,6 +12,10 @@ build/
 # Data & models (large artifacts stay out of git)
 data/raw/
 data/datasets/
+data/uploads/
+data/tile_cache/
+data/contacts.db
+edge/calib/
 runs/
 weights/
 *.pt

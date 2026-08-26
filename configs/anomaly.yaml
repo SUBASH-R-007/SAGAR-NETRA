@@ -1,0 +1,15 @@
+# TridentNet Brain C — conv-autoencoder anomaly detection.
+# Mirrors tridentnet.anomaly.DEFAULTS; omitted keys keep code defaults.
+
+base_channels: 16     # first encoder width; doubles per downsampling stage
+latent_channels: 128  # spatial bottleneck depth at 1/8 resolution
+epochs: 12            # training epochs over the clean-seabed patch set
+lr: 0.001             # Adam learning rate
+batch: 8              # patches per step
+patch: 128            # training crop side (pixels)
+thresh_q: 0.995       # clean-error quantile defining "anomalous" (calibrated at train time)
+smooth_sigma: 2.0     # gaussian smoothing of the error map before thresholding (pixels)
+min_blob_px: 40       # minimum connected anomalous area to report (pixels)
+dedup_iou: 0.4        # cross-tile NMS IoU for anomaly boxes
+score_scale: 2.0      # error/threshold ratio that maps to score 1.0
+nadir_guard_cols: 32  # ground columns next to nadir excluded (slant-stretch zone)
