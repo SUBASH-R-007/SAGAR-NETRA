@@ -69,13 +69,22 @@ def analyze_shadow(
     bg_width_cols: int = 40,
     bg_gap_cols: int = 4,
     tolerance_cols: int = 2,
+    lead_in_cols: int = 4,
+    core_frac: float = 0.6,
 ) -> ShadowAnalysis:
     """Verify highlight+shadow for the box [ping0..ping1] x [col0..col1].
 
     The shadow is searched down-range (increasing column) of the box's far
     edge: a run of columns whose fraction of rows darker than
     ``shadow_thresh * background`` stays above ``min_dark_frac``, allowing
-    up to ``tolerance_cols`` bright interruptions (speckle).
+    up to ``tolerance_cols`` bright interruptions (speckle). The run may
+    start up to ``lead_in_cols`` after the box edge — detector boxes are
+    quantized, so a column or two of object highlight often trails the box.
+
+    Shadow statistics use only the central ``core_frac`` of the box's ping
+    rows: an object tapers toward its along-track ends, so the box-edge rows
+    carry little or no shadow and would dilute the dark fraction. The
+    highlight test still uses every row.
     """
     img = gi.side(side)
     n_pings, n_cols = img.shape
@@ -121,8 +130,14 @@ def analyze_shadow(
         x_end_max = x_far * 4.0
     search_hi = int(np.clip(np.ceil(gi.col_of_ground_range(x_end_max)), col1 + 1, n_cols))
 
-    window = rows[:, col1 + 1 : search_hi]
-    shadow_cols = 0
+    # Central rows only for shadow statistics (see docstring).
+    n_rows = rows.shape[0]
+    margin = int(round(n_rows * (1.0 - float(np.clip(core_frac, 0.1, 1.0))) / 2.0))
+    core = rows[margin : n_rows - margin] if n_rows - 2 * margin >= 1 else rows
+
+    window = core[:, col1 + 1 : search_hi]
+    run_start = -1
+    run_end = -1
     if window.shape[1] > 0:
         dark = window < shadow_thresh * background
         finite = np.isfinite(window)
@@ -131,26 +146,34 @@ def analyze_shadow(
                 finite.sum(axis=0) > 0, dark.sum(axis=0) / np.maximum(finite.sum(axis=0), 1), 0.0
             )
         is_shadow = dark_frac >= min_dark_frac
-        misses = 0
-        for flag in is_shadow:
-            if flag:
-                shadow_cols += 1 + misses if shadow_cols else 1
-                misses = 0
-            else:
-                if not shadow_cols:
-                    break  # shadow must start immediately behind the object
-                misses += 1
-                if misses > tolerance_cols:
-                    break
+        for j in range(min(max(lead_in_cols, 1), len(is_shadow))):
+            if is_shadow[j]:
+                run_start = j
+                break
+        if run_start >= 0:
+            run_end = run_start
+            misses = 0
+            for j in range(run_start + 1, len(is_shadow)):
+                if is_shadow[j]:
+                    run_end = j
+                    misses = 0
+                else:
+                    misses += 1
+                    if misses > tolerance_cols:
+                        break
 
-    shadow_len_m = shadow_cols * gi.ground_res
-    has_shadow = shadow_cols >= 2
+    has_shadow = run_start >= 0 and (run_end - run_start + 1) >= 2
     if has_shadow:
-        shadow_slice = window[:, :shadow_cols]
-        shadow_ratio = _robust_median(shadow_slice) / background
+        # The shadow physically begins at the object's far edge; bright
+        # lead-in columns are box-quantization slop, so length is measured
+        # from the box edge to the end of the dark run.
+        shadow_cols = run_end + 1
+        shadow_len_m = shadow_cols * gi.ground_res
+        shadow_ratio = _robust_median(window[:, run_start : run_end + 1]) / background
         x_end = float(gi.ground_range_of_col(col1 + shadow_cols))
         height = altitude * (x_end - x_far) / x_end if x_end > 0 else float("nan")
     else:
+        shadow_len_m = 0.0
         shadow_ratio = float("nan")
         x_end = float("nan")
         height = float("nan")
