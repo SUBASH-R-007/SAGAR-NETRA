@@ -89,6 +89,7 @@ class RunParams:
     dataset_dir: Path
     pings_range: tuple[int, int] | None  # None -> dataset builder default
     dest: Path  # deployable checkpoint destination
+    seed: int  # training seed (vary for deep-ensemble members)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,6 +127,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild", action="store_true",
         help="rebuild the synthetic dataset even if its data.yaml already exists",
     )
+    parser.add_argument(
+        "--seed", type=int, default=None,
+        help=f"training seed (default {TRAIN_SEED}); vary it to train deep-ensemble members",
+    )
+    parser.add_argument(
+        "--dest", type=Path, default=None,
+        help="deployable checkpoint path (default weights/detector[_smoke].pt); "
+        "e.g. weights/detector_seed1.pt for an ensemble member",
+    )
     return parser
 
 
@@ -154,7 +164,8 @@ def resolve(args: argparse.Namespace) -> RunParams:
         rebuild=bool(args.rebuild),
         dataset_dir=SMOKE_DATASET_DIR if smoke else DATASET_DIR,
         pings_range=SMOKE_PINGS_RANGE if smoke else None,
-        dest=WEIGHTS_DIR / ("detector_smoke.pt" if smoke else "detector.pt"),
+        dest=args.dest or WEIGHTS_DIR / ("detector_smoke.pt" if smoke else "detector.pt"),
+        seed=TRAIN_SEED if args.seed is None else int(args.seed),
     )
 
 
@@ -237,7 +248,7 @@ def train(params: RunParams) -> int:
         workers=0,  # Windows: DataLoader worker processes deadlock under spawn
         plots=False,
         val=True,
-        seed=TRAIN_SEED,
+        seed=params.seed,
         project=str(REPO_ROOT / "runs"),
         name=params.name,
         exist_ok=True,

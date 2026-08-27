@@ -15,3 +15,12 @@ dedup_iou: 0.45     # cross-tile duplicate suppression IoU in GLOBAL (ping, colu
 max_det: 100        # detection cap per tile; debris fields are sparse, so anything
                     # denser is clutter/ripple false fire (count)
 batch: 8            # tiles per predict() call; bounds peak memory on CPU/edge boxes (tiles)
+
+# Deep-ensemble members (repo-relative .pt paths). When every listed file
+# exists, inference fuses their consensus (tridentnet/deep_ensemble.py);
+# otherwise the single 'weights/detector.pt' path is used. Train members with
+#   python scripts/train_detector.py --seed N --dest weights/detector_seedN.pt --name detector_seedN
+ensemble_weights:
+  - weights/detector.pt
+  - weights/detector_seed1.pt
+  - weights/detector_seed2.pt
