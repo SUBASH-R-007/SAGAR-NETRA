@@ -88,14 +88,14 @@ export default function DiffView({ surveys, pushToast }) {
           />
         </label>
         <button type="button" className="btn primary" onClick={run} disabled={loading}>
-          {loading ? 'Comparingâ€¦' : 'Compare'}
+          {loading ? 'Comparing…' : 'Compare'}
         </button>
       </div>
 
       {!result && !loading && (
         <EmptyState
           title="Run a comparison"
-          hint="Contacts in B with no A contact within the radius are flagged NEW â€” likely fresh debris."
+          hint="Contacts in B with no A contact within the radius are flagged NEW — likely fresh debris."
         />
       )}
 
@@ -103,11 +103,11 @@ export default function DiffView({ surveys, pushToast }) {
         <div className="diff-result">
           <div className="diff-stats">
             <div className="stat">
-              <span className="stat-value mono">{result.n_a ?? 'â€”'}</span>
+              <span className="stat-value mono">{result.n_a ?? '—'}</span>
               <span className="stat-label">contacts in A</span>
             </div>
             <div className="stat">
-              <span className="stat-value mono">{result.n_b ?? 'â€”'}</span>
+              <span className="stat-value mono">{result.n_b ?? '—'}</span>
               <span className="stat-label">contacts in B</span>
             </div>
             <div className="stat new">
@@ -135,15 +135,16 @@ export default function DiffView({ surveys, pushToast }) {
                 maxNativeZoom={17}
                 maxZoom={19}
               />
+              {/* matched = ink-faint, NEW = sev-critical (DESIGN.md tokens) */}
               {matched.map((m, i) =>
                 m.b ? (
                   <CircleMarker
                     key={`m-${m.b.id || i}`}
                     center={[m.b.lat, m.b.lon]}
                     radius={6}
-                    pathOptions={{ color: '#8296ab', fillColor: '#8296ab', fillOpacity: 0.4, weight: 1.5 }}
+                    pathOptions={{ color: '#8A94A0', fillColor: '#8A94A0', fillOpacity: 0.4, weight: 1.5 }}
                   >
-                    <Tooltip>{`matched: ${m.b.id} â†” ${m.a?.id} (${Number(m.distance_m).toFixed(1)} m)`}</Tooltip>
+                    <Tooltip>{`matched: ${m.b.id} · ${m.a?.id} (${Number(m.distance_m).toFixed(1)} m)`}</Tooltip>
                   </CircleMarker>
                 ) : null,
               )}
@@ -152,9 +153,9 @@ export default function DiffView({ surveys, pushToast }) {
                   key={`n-${c.id}`}
                   center={[c.lat, c.lon]}
                   radius={8}
-                  pathOptions={{ color: '#ff3b30', fillColor: '#ff3b30', fillOpacity: 0.65, weight: 2 }}
+                  pathOptions={{ color: '#BC3116', fillColor: '#BC3116', fillOpacity: 0.65, weight: 2 }}
                 >
-                  <Tooltip>{`NEW: ${c.id} Â· ${c.cls} Â· sev ${Math.round(c.severity)}`}</Tooltip>
+                  <Tooltip>{`NEW: ${c.id} · ${c.cls} · sev ${Math.round(c.severity)}`}</Tooltip>
                 </CircleMarker>
               ))}
             </MapContainer>
@@ -162,9 +163,9 @@ export default function DiffView({ surveys, pushToast }) {
 
           <div className="diff-tables">
             <div className="diff-col">
-              <h3 className="mono">NEW CONTACTS ({newContacts.length})</h3>
+              <h3 className="diff-col-title">New Contacts ({newContacts.length})</h3>
               {newContacts.length === 0 ? (
-                <p className="muted">No new contacts â€” nothing appeared between the surveys.</p>
+                <p className="muted">No new contacts — nothing appeared between the surveys.</p>
               ) : (
                 <div className="table-scroll short">
                   <table className="contacts-table">
@@ -182,7 +183,7 @@ export default function DiffView({ surveys, pushToast }) {
                       {newContacts.map((c) => (
                         <tr key={c.id}>
                           <td>
-                            <span className="new-tag mono">NEW</span>
+                            <span className="tag new-tag">NEW</span>
                           </td>
                           <td className="mono">{c.id}</td>
                           <td>{c.cls}</td>
@@ -202,7 +203,7 @@ export default function DiffView({ surveys, pushToast }) {
             </div>
 
             <div className="diff-col">
-              <h3 className="mono">MATCHED PAIRS ({matched.length})</h3>
+              <h3 className="diff-col-title">Matched Pairs ({matched.length})</h3>
               {matched.length === 0 ? (
                 <p className="muted">No matches within {radius} m.</p>
               ) : (
@@ -218,8 +219,8 @@ export default function DiffView({ surveys, pushToast }) {
                     <tbody>
                       {matched.map((m, i) => (
                         <tr key={m.b?.id || i}>
-                          <td className="mono">{m.b?.id ?? 'â€”'}</td>
-                          <td className="mono">{m.a?.id ?? 'â€”'}</td>
+                          <td className="mono">{m.b?.id ?? '—'}</td>
+                          <td className="mono">{m.a?.id ?? '—'}</td>
                           <td className="num mono">{Number(m.distance_m).toFixed(1)} m</td>
                         </tr>
                       ))}

@@ -5,7 +5,7 @@ import { fetchJob, fetchJobs, jobSocketUrl, uploadFile } from '../api'
 // (.DAT + .SON directory). Keep in sync with api/main.py UPLOAD_SUFFIXES.
 const ACCEPT = '.xtf,.jsf,.tif,.tiff,.png,.jpg,.jpeg,.sl2,.sl3,.zip'
 
-// Right-hand rail: drag-drop upload → live WebSocket progress → survey refresh.
+// Right-hand rail: drag-drop upload, live WebSocket progress, survey refresh.
 // Falls back to 1 s polling of GET /api/jobs/{id} if the socket fails.
 export default function UploadRail({ onJobDone, pushToast }) {
   const [jobs, setJobs] = useState([])
@@ -139,7 +139,7 @@ export default function UploadRail({ onJobDone, pushToast }) {
   return (
     <aside className="rail">
       <div className="rail-section">
-        <h2 className="rail-title mono">SURVEY INGEST</h2>
+        <h2 className="rail-title">Survey Ingest</h2>
         <div
           className={drag ? 'dropzone drag' : 'dropzone'}
           onDragOver={(e) => {
@@ -159,15 +159,12 @@ export default function UploadRail({ onJobDone, pushToast }) {
             if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
           }}
         >
-          <div className="dz-icon" aria-hidden="true">
-            ⇪
-          </div>
           <div className="dz-text">
             Drop a sonar file here
             <br />
             <span className="muted">or click to browse</span>
           </div>
-          <div className="dz-formats mono">.xtf · .jsf · .tif · .png</div>
+          <div className="dz-formats">.xtf · .jsf · .tif · .png</div>
           <input
             ref={fileRef}
             type="file"
@@ -179,14 +176,14 @@ export default function UploadRail({ onJobDone, pushToast }) {
             }}
           />
         </div>
-        <div className="mode-toggle mono" role="radiogroup" aria-label="processing mode">
+        <div className="seg" role="radiogroup" aria-label="processing mode">
           {['batch', 'stream'].map((m) => (
             <button
               key={m}
               type="button"
               role="radio"
               aria-checked={mode === m}
-              className={mode === m ? 'mode-btn active' : 'mode-btn'}
+              className={mode === m ? 'seg-cell active' : 'seg-cell'}
               onClick={() => setMode(m)}
               title={m === 'stream' ? 'replay as a live towed stream' : 'one-shot processing'}
             >
@@ -197,20 +194,20 @@ export default function UploadRail({ onJobDone, pushToast }) {
       </div>
 
       <div className="rail-section grow">
-        <h2 className="rail-title mono">JOBS</h2>
+        <h2 className="rail-title">Ingest Ledger</h2>
         {jobs.length === 0 && (
           <p className="muted rail-hint">No jobs yet. Uploaded surveys are parsed, enhanced,
             detected on, and scored here in real time.</p>
         )}
         <div className="job-list">
           {jobs.map((j) => (
-            <div key={j.id} className={`job job-${j.status}`}>
+            <div key={j.id} className={j.status === 'error' ? 'job job-error' : 'job'}>
               <div className="job-top">
                 <span className="job-name mono" title={j.id}>
                   {j.survey || j.name || j.filename || j.message || j.id}
                 </span>
-                {j.mode === 'stream' && <span className="pill pill-stream">live</span>}
-                <span className={`pill pill-${j.status}`}>{j.status}</span>
+                {j.mode === 'stream' && <span className="tag tag-live">live</span>}
+                <span className={`tag tag-${j.status}`}>{j.status}</span>
               </div>
               {(j.status === 'running' || j.status === 'queued') && (
                 <>

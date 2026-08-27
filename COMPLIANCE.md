@@ -74,7 +74,7 @@ don't have, or research beyond a hackathon prototype — honest rationale given)
 | PyTorch → ONNX | ✅ | `edge/export_onnx.py` | mAP50 parity delta 0.0000 |
 | TensorRT INT8 (Jetson) | 🟡 | `edge/trt_int8.md` runbook + calibration-set generator | needs the physical Jetson to execute |
 | Hailo .hef (Pi 5) | 📋 | — | needs the Hailo accelerator + DFC toolchain |
-| Benchmarks | ✅ | `edge/benchmark.py` → `benchmark.md` | measured: 43 tiles/s ONNX CPU, 2233 pings/s preprocess |
+| Benchmarks | ✅ | `edge/benchmark.py` → `benchmark.md` | measured: 38.1 tiles/s ONNX CPU, 2717 pings/s preprocess (latest run; regenerate to re-stamp) |
 
 ## Innovation ledger
 

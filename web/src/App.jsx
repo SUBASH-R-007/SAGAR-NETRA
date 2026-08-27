@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchContacts, fetchSurveys } from './api'
+import Chakra from './components/Chakra'
 import Copilot from './components/Copilot'
 import ContactsTable from './components/ContactsTable'
 import DiffView from './components/DiffView'
@@ -12,6 +13,24 @@ import Waterfall from './components/Waterfall'
 const TABS = ['Map', 'Waterfall', 'Contacts', 'Diff', 'Copilot']
 const FILTERED_TABS = new Set(['Map', 'Waterfall', 'Contacts'])
 
+// A- / A / A+ — the standard GoI portal accessibility control. Applied to the
+// root element font-size; the whole type scale is rem-based so it follows.
+const FONT_STEPS = [
+  { key: 'small', label: 'A-', pct: '87.5%', title: 'Decrease font size' },
+  { key: 'normal', label: 'A', pct: '100%', title: 'Normal font size' },
+  { key: 'large', label: 'A+', pct: '112.5%', title: 'Increase font size' },
+]
+const FONT_STORE_KEY = 'drishti.fontSize'
+
+function readStoredFontStep() {
+  try {
+    const v = window.localStorage.getItem(FONT_STORE_KEY)
+    return FONT_STEPS.some((s) => s.key === v) ? v : 'normal'
+  } catch {
+    return 'normal' // storage unavailable (private mode etc.) — default silently
+  }
+}
+
 let toastSeq = 0
 
 export default function App() {
@@ -22,6 +41,17 @@ export default function App() {
   const [cls, setCls] = useState('all')
   const [minConf, setMinConf] = useState(0)
   const [toasts, setToasts] = useState([])
+  const [fontStep, setFontStep] = useState(readStoredFontStep)
+
+  useEffect(() => {
+    const step = FONT_STEPS.find((s) => s.key === fontStep) || FONT_STEPS[1]
+    document.documentElement.style.fontSize = step.pct
+    try {
+      window.localStorage.setItem(FONT_STORE_KEY, step.key)
+    } catch {
+      // storage unavailable — the choice still applies for this session
+    }
+  }, [fontStep])
 
   const pushToast = useCallback((text, kind = 'info') => {
     const id = ++toastSeq
@@ -84,20 +114,63 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ◉
-          </span>
-          <div>
-            <h1>
-              SAGAR-NETRA <span className="brand-sep">—</span> DRISHTI Console
-            </h1>
-            <p className="tagline">
-              Side-scan sonar marine-debris detection · physics-verified contacts · offline-ready
-            </p>
+      {/* 1 · government strip — 30px, navy-deep */}
+      <div className="govt-strip">
+        <span className="govt-name">
+          <span lang="hi">भारत सरकार</span> | GOVERNMENT OF INDIA
+        </span>
+        <div className="govt-tools">
+          <a className="skip-link" href="#main-content">
+            Skip to main content
+          </a>
+          <div className="fs-group" role="group" aria-label="Font size">
+            {FONT_STEPS.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                className={s.key === fontStep ? 'fs-btn active' : 'fs-btn'}
+                aria-pressed={s.key === fontStep}
+                aria-label={s.title}
+                title={s.title}
+                onClick={() => setFontStep(s.key)}
+              >
+                {s.label}
+              </button>
+            ))}
           </div>
         </div>
+      </div>
+
+      <header className="header">
+        {/* 2 · header band — emblem slot, ministry designation, portal identity */}
+        <div className="header-band">
+          <div className="brand">
+            <Chakra size={44} />
+            <div className="ministry">
+              <span className="ministry-hi" lang="hi">
+                पृथ्वी विज्ञान मंत्रालय
+              </span>
+              <span className="ministry-en">Ministry of Earth Sciences</span>
+            </div>
+            <span className="band-rule" aria-hidden="true" />
+            <div className="identity">
+              <h1 className="wordmark">SAGAR-NETRA</h1>
+              <span className="ident-sub">
+                DRISHTI Survey Console — AI Marine Debris Detection
+              </span>
+            </div>
+          </div>
+          <span className="sih-tag mono">SMART INDIA HACKATHON 2026 · PS 26057</span>
+        </div>
+
+        {/* 3 · tricolor ribbon — 3px, three equal bands, appears exactly once */}
+        <div className="tricolor" aria-hidden="true">
+          <span className="t-saffron" />
+          <span className="t-white" />
+          <span className="t-green" />
+        </div>
+
+        {/* 4 · nav bar — solid navy, saffron active underline */}
         <nav className="tabs" aria-label="views">
           {TABS.map((t) => (
             <button
@@ -110,6 +183,12 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        {/* survey metadata line — kept visible on every tab, below the nav */}
+        <p className="meta-strip mono">
+          DATUM WGS-84 · SURVEY {survey || 'NONE'} · {contacts.length} CONTACTS · MoES / NIOT
+          PS 26057
+        </p>
       </header>
 
       {FILTERED_TABS.has(tab) && (
@@ -128,7 +207,7 @@ export default function App() {
       )}
 
       <div className="body">
-        <main className="content">
+        <main className="content" id="main-content" tabIndex={-1}>
           {tab === 'Map' && (
             <MapView
               contacts={filtered}
@@ -158,6 +237,20 @@ export default function App() {
         </main>
         <UploadRail pushToast={pushToast} onJobDone={(name) => refreshSurveys(name)} />
       </div>
+
+      {/* 6 · footer — navy band, honest attribution */}
+      <footer className="footer">
+        <div className="footer-lines">
+          <p>
+            Prototype developed for Smart India Hackathon 2026 — Problem Statement 26057
+            (Ministry of Earth Sciences / NIOT)
+          </p>
+          <p className="footer-note">
+            This is a hackathon prototype, not an official Government of India website.
+          </p>
+        </div>
+        <span className="footer-mode mono">Offline-first · Zero cloud dependency</span>
+      </footer>
 
       <Toasts toasts={toasts} />
     </div>

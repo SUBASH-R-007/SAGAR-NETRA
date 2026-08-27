@@ -15,7 +15,7 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
     try {
       const updated = await postReview(c.id, status)
       onReview(updated)
-      pushToast(`${c.id} → ${status}`, 'ok')
+      pushToast(`${c.id} marked ${status}`, 'ok')
     } catch (err) {
       pushToast(`Review failed: ${err.message}`, 'error')
     } finally {
@@ -41,11 +41,11 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         <span>Class</span>
         <b>{c.cls}</b>
         <span>Confidence</span>
-        <b>{Math.round(c.confidence)}%</b>
+        <b className="mono">{Math.round(c.confidence)}%</b>
         <span>Dims</span>
-        <b>{fmtDims(c.dims)}</b>
+        <b className="mono">{fmtDims(c.dims)}</b>
         <span>Depth</span>
-        <b>{fmtMeters(c.depth_m)}</b>
+        <b className="mono">{fmtMeters(c.depth_m)}</b>
         <span>Brains</span>
         <b>{c.brains && c.brains.length ? c.brains.join(' · ') : '—'}</b>
         <span>Review</span>
@@ -70,7 +70,7 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
           Reject
         </button>
         <a className="btn link" href={evidenceUrl(c.id)} target="_blank" rel="noreferrer">
-          Evidence ↗
+          Evidence
         </a>
       </div>
     </div>
