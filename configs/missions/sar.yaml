@@ -1,0 +1,32 @@
+# Mission profile: search and rescue / victim recovery (blueprint N-12).
+#
+# hazard_overrides are merged over geoscribe.severity.DEFAULT_HAZARD; unlisted
+# classes keep their defaults.
+description: >-
+  Search-and-rescue profile: recall over precision. A possible human body is
+  the only priority; debris classes are demoted hard so the review queue is
+  not clogged while the search clock runs. Wrecks and aircraft stay elevated
+  as probable locations of victims.
+
+hazard_overrides:
+  human_body: 1.0       # the mission — nothing may outrank it
+  wreck: 0.80           # victims are found at or near the casualty vessel
+  aircraft: 0.80        # ditched airframe: primary datum in an air SAR
+  unknown_anomaly: 0.75 # a body-sized unclassified return must be reviewed
+  ghost_net: 0.40       # entanglement risk to divers, otherwise secondary
+  container: 0.25
+  cylinder_drum: 0.20
+  pipeline: 0.10
+  tire: 0.05            # never worth a diver during an active search
+
+# SAR is recall-first: a missed body-sized return is unrecoverable time on a
+# survival clock, while a false alarm costs one operator glance. A human body
+# is also among the weakest sonar targets (low acoustic contrast, small
+# shadow), so the per-tile confidence floor drops well below the default 0.25.
+detector_conf: 0.10
+
+reportable_extra_note: >-
+  SAR profile active: detector threshold lowered for recall and debris
+  demoted in severity. Treat every human_body and unknown_anomaly contact as
+  a possible victim until visually cleared; log clearance times for the
+  search coordinator.

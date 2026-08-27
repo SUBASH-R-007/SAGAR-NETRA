@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchJob, fetchJobs, jobSocketUrl, uploadFile } from '../api'
 
-const ACCEPT = '.xtf,.jsf,.tif,.tiff,.png,.jpg,.jpeg'
+// .sl2/.sl3 = Lowrance citizen sonar; .zip = Humminbird recording archive
+// (.DAT + .SON directory). Keep in sync with api/main.py UPLOAD_SUFFIXES.
+const ACCEPT = '.xtf,.jsf,.tif,.tiff,.png,.jpg,.jpeg,.sl2,.sl3,.zip'
 
 // Right-hand rail: drag-drop upload → live WebSocket progress → survey refresh.
 // Falls back to 1 s polling of GET /api/jobs/{id} if the socket fails.

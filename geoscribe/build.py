@@ -49,13 +49,18 @@ def build_contacts(
     evidence_dir: str | Path | None = None,
     layback_m: float | None = None,
     id_prefix: str = "SN",
+    hazard_table: dict[str, float] | None = None,
 ) -> list[Contact]:
     """Turn physics-verified detections into reportable contacts.
 
     Contacts are numbered in confidence order (the input order from
     :func:`physicheck.verify.verify_detections`). ``evidence_dir`` enables
     per-contact evidence cards + thumbnails; without it the paths stay None
-    (useful for fast tests and the API's preview pass).
+    (useful for fast tests and the API's preview pass). ``hazard_table``
+    passes a mission profile's per-class hazard weights straight through to
+    :func:`geoscribe.severity.severity_score` (None keeps the defaults), so
+    disaster-mode profiles re-rank contacts without touching detection or
+    physics evidence.
     """
     date_part = "unknown-date"
     times = pre.ground.nav["time"]
@@ -95,6 +100,7 @@ def build_contacts(
             lat=geo.lat,
             lon=geo.lon,
             layers=layers,
+            hazard_table=hazard_table,
         )
 
         evidence_png = thumb_png = None

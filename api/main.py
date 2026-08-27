@@ -14,7 +14,15 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -25,8 +33,15 @@ from api.diff import diff_surveys
 from api.jobs import JobRegistry
 from api.processing import DEFAULT_OUTPUT_ROOT, REPO_ROOT, process_survey
 from geoscribe.contact import ReviewStatus
+from geoscribe.severity import list_missions, load_mission
 
-UPLOAD_SUFFIXES = {".xtf", ".jsf", ".tif", ".tiff", ".png", ".jpg", ".jpeg"}
+#: .zip is the transport for Humminbird recordings (a .DAT plus its sibling
+#: .SON/.IDX directory cannot travel as one plain file); the archive is
+#: extracted server-side and its .DAT located.
+UPLOAD_SUFFIXES = {
+    ".xtf", ".jsf", ".tif", ".tiff", ".png", ".jpg", ".jpeg",
+    ".sl2", ".sl3", ".zip",
+}
 TILE_CACHE = REPO_ROOT / "data" / "tile_cache"
 OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 WS_POLL_S = 0.25
@@ -63,15 +78,26 @@ def create_app(
     # ------------------------------------------------------------- upload --
 
     @app.post("/api/upload")
-    async def upload(file: UploadFile = File(...)) -> dict[str, str]:  # noqa: B008 - FastAPI idiom
+    async def upload(
+        file: UploadFile = File(...),  # noqa: B008 - FastAPI idiom
+        mission: str | None = Form(None),  # noqa: B008 - FastAPI idiom
+    ) -> dict[str, str]:
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in UPLOAD_SUFFIXES:
             raise HTTPException(415, f"unsupported file type {suffix!r}")
+        if mission:
+            try:  # validate before accepting the upload; processing re-loads it
+                load_mission(mission)
+            except KeyError as exc:
+                raise HTTPException(422, str(exc.args[0])) from exc
         app.state.upload_dir.mkdir(parents=True, exist_ok=True)
         dest = app.state.upload_dir / Path(file.filename).name
         with dest.open("wb") as fh:
             while chunk := await file.read(1 << 20):
                 fh.write(chunk)
+
+        if suffix == ".zip":
+            dest = _extract_recording_zip(dest)
 
         job = app.state.jobs.create(dest.name)
 
@@ -85,6 +111,7 @@ def create_app(
                     update=lambda **f: registry.update(job.id, **f),
                     detector_factory=app.state.detector_factory,
                     output_root=app.state.output_root,
+                    mission=mission or None,
                 )
                 registry.update(
                     job.id, status="done", stage="done", fraction=1.0,
@@ -232,24 +259,47 @@ def create_app(
     def diff(survey_a: str, survey_b: str, radius_m: float = 25.0) -> dict[str, Any]:
         return diff_surveys(app.state.repo, survey_a, survey_b, radius_m)
 
+    @app.get("/api/crossview")
+    def crossview(survey_a: str, survey_b: str, radius_m: float = 15.0) -> dict[str, Any]:
+        """Cross-swath corroboration between two overlapping surveys."""
+        from physicheck.crossview import cross_confirm
+
+        a = app.state.repo.query(survey=survey_a, limit=10_000)
+        b = app.state.repo.query(survey=survey_b, limit=10_000)
+        result = cross_confirm(a, b, radius_m=radius_m)
+        return {"survey_a": survey_a, "survey_b": survey_b, **result.to_dict()}
+
     @app.get("/api/route")
     def route(
         survey: str | None = None,
         review: str = "confirmed",
         start_lat: float | None = None,
         start_lon: float | None = None,
+        cluster_eps_m: float | None = None,
     ) -> dict[str, Any]:
-        """Recovery tour over contacts (default: the confirmed ones)."""
+        """Recovery tour over contacts (default: the confirmed ones);
+        ``cluster_eps_m`` switches to the two-level retrieval-zone tour."""
         from geoscribe.route import plan_route
 
         found = app.state.repo.query(
             survey=survey, review=review or None, limit=500
         )
+        if cluster_eps_m is not None:
+            from geoscribe.cluster import plan_cluster_route
+
+            return plan_cluster_route(found, cluster_eps_m, start_lat, start_lon)
         return plan_route(found, start_lat, start_lon)
 
     @app.post("/api/copilot")
     def ask_copilot(body: CopilotRequest) -> dict[str, Any]:
         return copilot_mod.ask(body.question, app.state.repo)
+
+    # ----------------------------------------------------------- missions --
+
+    @app.get("/api/missions")
+    def missions() -> list[dict[str, str]]:
+        """Disaster-mode mission profiles available for /api/upload."""
+        return list_missions()
 
     # ------------------------------------------------------------- layers --
 
@@ -290,6 +340,36 @@ def create_app(
         app.mount("/", StaticFiles(directory=dist, html=True), name="web")
 
     return app
+
+
+def _extract_recording_zip(archive: Path) -> Path:
+    """Extract an uploaded recording archive and return its survey entry file.
+
+    Supports Humminbird recordings (a ``.DAT`` plus its sibling ``.SON``/
+    ``.IDX`` directory) and, generically, any archive containing exactly one
+    parseable survey file. Zip-slip is blocked by refusing member paths that
+    escape the extraction directory.
+    """
+    import zipfile
+
+    out_dir = archive.parent / archive.stem
+    try:
+        with zipfile.ZipFile(archive) as zf:
+            for member in zf.namelist():
+                target = (out_dir / member).resolve()
+                if not str(target).startswith(str(out_dir.resolve())):
+                    raise HTTPException(422, "archive contains unsafe paths")
+            zf.extractall(out_dir)
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(422, "not a valid zip archive") from exc
+    finally:
+        archive.unlink(missing_ok=True)
+
+    for pattern in ("*.dat", "*.DAT", "*.xtf", "*.jsf", "*.sl2", "*.sl3"):
+        matches = sorted(out_dir.rglob(pattern))
+        if matches:
+            return matches[0]
+    raise HTTPException(422, "archive contains no supported survey file (.DAT/.xtf/.jsf/.sl2/.sl3)")
 
 
 _FALLBACK_TILE: bytes | None = None

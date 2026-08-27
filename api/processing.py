@@ -20,7 +20,7 @@ from PIL import Image
 from api.db import ContactRepo
 from geoscribe.build import build_contacts
 from geoscribe.report import write_all
-from geoscribe.severity import Layer, load_layers
+from geoscribe.severity import Layer, load_layers, load_mission
 from physicheck.calibrate import PhysicsGate
 from physicheck.verify import verify_detections
 from sonar_core.parsers.base import load as load_survey
@@ -49,12 +49,23 @@ class DetectorLike(Protocol):
 
 class _CombinedBrains:
     """Default TridentNet stack: Brain A always, Brain C when weights exist,
-    fused by the ensemble merger (corroboration + open-set anomalies)."""
+    fused by the ensemble merger (corroboration + open-set anomalies).
 
-    def __init__(self) -> None:
-        from tridentnet.detector import Detector
+    ``detector_config`` is a partial Brain-A config override (deep-merged over
+    ``configs/detector.yaml``) — mission profiles use it to lower ``conf`` for
+    recall-first operations like SAR without touching the deployed YAML.
+    """
 
-        self.brain_a = Detector()
+    def __init__(self, detector_config: dict[str, Any] | None = None) -> None:
+        from tridentnet.deep_ensemble import build_brain_a
+
+        self.brain_a = build_brain_a(detector_config)
+        try:
+            from tridentnet.segmenter import Segmenter
+
+            self.brain_b: Any = Segmenter()
+        except (FileNotFoundError, ImportError):
+            self.brain_b = None  # segmenter weights not trained yet
         try:
             from tridentnet.anomaly import AnomalyDetector
 
@@ -66,12 +77,16 @@ class _CombinedBrains:
         from tridentnet.ensemble import merge_brains
 
         detections = self.brain_a.detect_tiles(tiles, progress=progress)
+        if self.brain_b is not None:
+            # Brain B refines filamentous-class boxes to their pixel-mask
+            # extent (nets/ropes: the bbox lies about size; the mask doesn't).
+            detections = [det for det, _mask in self.brain_b.refine_detections(detections, tiles)]
         blobs = self.brain_c.detect_tiles(tiles) if self.brain_c is not None else None
         return merge_brains(detections, blobs)
 
 
-def _default_detector_factory() -> DetectorLike:
-    return _CombinedBrains()
+def _default_detector_factory(detector_config: dict[str, Any] | None = None) -> DetectorLike:
+    return _CombinedBrains(detector_config)
 
 
 def _band_progress(update: ProgressFn | None, stage: str, message: str = ""):
@@ -121,11 +136,29 @@ def process_survey(
     layers: list[Layer] | None = None,
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     preprocess_config: dict | None = None,
+    mission: str | None = None,
 ) -> dict[str, Any]:
-    """Run the full chain on one survey file; returns a summary dict."""
+    """Run the full chain on one survey file; returns a summary dict.
+
+    ``mission`` names a disaster-mode profile in ``configs/missions/``
+    (blueprint N-12): its ``hazard_table`` re-weights the severity ranking
+    and its ``detector_conf`` overrides the Brain-A confidence floor (only
+    for the default detector stack — an injected ``detector_factory`` owns
+    its own configuration). Unknown names raise ``KeyError`` before any
+    processing starts.
+    """
     path = Path(path)
     survey = path.name
     out_dir = Path(output_root) / path.stem
+
+    profile: dict[str, Any] | None = None
+    hazard_table: dict[str, float] | None = None
+    detector_config: dict[str, Any] | None = None
+    if mission is not None:
+        profile = load_mission(mission)
+        hazard_table = profile["hazard_table"]
+        if profile["detector_conf"] is not None:
+            detector_config = {"conf": float(profile["detector_conf"])}
 
     stage = _band_progress(update, "parse", f"parsing {survey}")
     stage(frac=0.0)
@@ -139,7 +172,10 @@ def process_survey(
 
     stage = _band_progress(update, "detect", "running TridentNet")
     stage(frac=0.0)
-    detector = (detector_factory or _default_detector_factory)()
+    detector = (
+        detector_factory() if detector_factory is not None
+        else _default_detector_factory(detector_config)
+    )
     detections = detector.detect_tiles(
         pre.tiles, progress=lambda name, frac: _band_progress(update, "detect", name)(frac=frac)
     )
@@ -156,7 +192,8 @@ def process_survey(
     if layers is None:
         layers = load_layers(DEFAULT_LAYER_DIR)
     contacts = build_contacts(
-        verified, pre, survey=survey, layers=layers, evidence_dir=out_dir / "evidence"
+        verified, pre, survey=survey, layers=layers, evidence_dir=out_dir / "evidence",
+        hazard_table=hazard_table,
     )
     stage(frac=0.5)
     report_paths = write_all(contacts, out_dir, survey=survey)
@@ -179,4 +216,6 @@ def process_survey(
         "outputs_dir": str(out_dir),
         "reports": {k: str(v) for k, v in report_paths.items()},
         "waterfall_meta": meta,
+        "mission": mission,
+        "mission_note": profile["reportable_extra_note"] if profile else None,
     }

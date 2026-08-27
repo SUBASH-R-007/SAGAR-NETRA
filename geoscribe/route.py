@@ -54,6 +54,24 @@ def _two_opt(tour: list[int], dist: np.ndarray, max_rounds: int = 8) -> list[int
     return tour
 
 
+def geodesic_matrix(points: list[tuple[float, float]]) -> np.ndarray:
+    """Pairwise geodesic distances (metres) between ``(lat, lon)`` points."""
+    return _distance_matrix(points)
+
+
+def order_points(
+    points: list[tuple[float, float]], start: int = 0
+) -> tuple[list[int], np.ndarray]:
+    """Visiting order over ``(lat, lon)`` points: nearest-neighbour + 2-opt.
+
+    Returns the tour (index ``start`` stays first — 2-opt only reverses
+    interior segments, so a virtual start node stays anchored) and the
+    distance matrix, so callers can price legs without recomputing it.
+    """
+    dist = _distance_matrix(points)
+    return _two_opt(_nearest_neighbour(dist, start), dist), dist
+
+
 def plan_route(
     contacts: list[Contact],
     start_lat: float | None = None,
@@ -72,8 +90,7 @@ def plan_route(
     if has_start:
         points = [(float(start_lat), float(start_lon)), *points]
 
-    dist = _distance_matrix(points)
-    tour = _two_opt(_nearest_neighbour(dist, 0), dist)
+    tour, dist = order_points(points)
 
     legs = [float(dist[tour[k], tour[k + 1]]) for k in range(len(tour) - 1)]
     order = tour[1:] if has_start else tour

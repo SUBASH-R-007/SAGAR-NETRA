@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
 from pyproj import Proj
 
 from geoscribe.contact import SeverityBreakdown
@@ -194,6 +195,78 @@ def severity_score(
         nearest_layer_distance_m=None if nearest_dist is None else round(nearest_dist, 1),
     )
     return score, breakdown
+
+
+#: Where disaster-mode mission profiles live (blueprint N-12): one YAML per
+#: mission, each re-weighting the class hazard table for that operation.
+MISSIONS_DIR: Path = Path(__file__).resolve().parents[1] / "configs" / "missions"
+
+
+def list_missions(missions_dir: str | Path = MISSIONS_DIR) -> list[dict[str, str]]:
+    """Available mission profiles as ``[{"name", "description"}, ...]``.
+
+    Sorted by name for a stable API listing; an absent directory yields an
+    empty list rather than an error so a stripped-down deployment (no mission
+    profiles shipped) degrades to default-hazard processing.
+    """
+    missions_dir = Path(missions_dir)
+    missions: list[dict[str, str]] = []
+    if missions_dir.is_dir():
+        for path in sorted(missions_dir.glob("*.yaml")):
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            missions.append(
+                {"name": path.stem, "description": str(doc.get("description", "")).strip()}
+            )
+    return missions
+
+
+def load_mission(name: str, missions_dir: str | Path = MISSIONS_DIR) -> dict[str, Any]:
+    """Load one mission profile from ``configs/missions/<name>.yaml``.
+
+    A mission profile re-purposes the same survey pipeline for a specific
+    operation (SAR, port clearance, ...) by re-weighting the *class hazard*
+    term of the severity index and optionally lowering the detector's
+    confidence floor — the two knobs that move contacts up the review queue
+    without touching any acoustic processing, so imagery and physics evidence
+    stay comparable across missions.
+
+    Returns a dict with:
+
+    * ``name`` / ``description`` / ``reportable_extra_note`` — strings;
+    * ``hazard_overrides`` — the raw per-class weights from the YAML;
+    * ``hazard_table`` — :data:`DEFAULT_HAZARD` with the overrides merged on
+      top, ready to pass to :func:`severity_score` (classes a mission does
+      not mention keep their defaults, so e.g. ``human_body`` stays 1.0
+      unless a profile explicitly says otherwise);
+    * ``detector_conf`` — per-tile confidence threshold for the detector
+      config, or None to keep the configured default.
+
+    Raises ``KeyError`` listing the available mission names when *name* has
+    no profile file.
+    """
+    missions_dir = Path(missions_dir)
+    available = sorted(p.stem for p in missions_dir.glob("*.yaml"))
+    # Validate against the listing, not the filesystem: the name reaches this
+    # function from an HTTP form field, and a path-shaped value ("../detector")
+    # must never escape the missions directory.
+    if name not in available:
+        raise KeyError(
+            f"unknown mission {name!r}; available missions: {', '.join(available) or 'none'}"
+        )
+    path = missions_dir / f"{name}.yaml"
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    overrides = {
+        str(cls): float(weight) for cls, weight in (doc.get("hazard_overrides") or {}).items()
+    }
+    conf = doc.get("detector_conf")
+    return {
+        "name": name,
+        "description": str(doc.get("description", "")).strip(),
+        "hazard_overrides": overrides,
+        "hazard_table": {**DEFAULT_HAZARD, **overrides},
+        "detector_conf": None if conf is None else float(conf),
+        "reportable_extra_note": str(doc.get("reportable_extra_note", "")).strip(),
+    }
 
 
 def load_layers(layer_dir: str | Path, config: dict[str, float] | None = None) -> list[Layer]:

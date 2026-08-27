@@ -136,7 +136,7 @@ def _ensure_adapters_loaded() -> None:
     """Import adapter modules so their ``@register_parser`` decorators run."""
     import importlib
 
-    for mod in ("xtf", "jsf", "image", "geotiff"):
+    for mod in ("xtf", "jsf", "image", "geotiff", "lowrance", "humminbird"):
         try:
             importlib.import_module(f"sonar_core.parsers.{mod}")
         except ImportError:  # optional deps (e.g. rasterio) may be absent
