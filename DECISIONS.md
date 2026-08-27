@@ -105,3 +105,33 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
    the synthetic factory's free masks is the documented follow-up.
 4. **Error smoothing happens BEFORE swath masking** in the anomaly map, or smoothing bleeds error
    back into the masked zone (caught by test).
+
+## Blueprint audit round (post-M8)
+
+1. **Brain B is a net/rope specialist U-Net**, not SegFormer/SAM-LoRA: filamentous classes
+   (`ghost_net`, `pipeline`) are the ones whose bounding box lies about extent; the U-Net trains
+   offline in minutes on the scene renderer's free masks. SAM-LoRA is the documented upgrade once
+   real imagery (AI4Shipwrecks) is downloaded.
+2. **Deep ensemble over MC-dropout** for L3 uncertainty: YOLOv8n contains no dropout layers to
+   sample at inference, so ensemble disagreement across three seed-trained members
+   (`configs/detector.yaml: ensemble_weights`) is the honest source of epistemic uncertainty.
+   Fusion divides summed matched scores by the member count — a lone find is demoted, consensus
+   keeps its mean score.
+3. **OpenMax not implemented**: it requires penultimate-layer activation surgery inside the
+   Ultralytics head. Open-set detection duty is carried by Brain C (reconstruction error) plus
+   cross-brain consensus; contacts the detector cannot name surface as `unknown_anomaly`.
+4. **Citizen-sonar parsers are spec-implementations validated by round-trip** (the jsf.py
+   precedent): Lowrance offsets per opensounder/sonarlight, Humminbird per PING-Mapper (its
+   cm-scaling and R=6378388 mercator chosen where references disagree). Humminbird recordings
+   (.DAT + .SON directory) upload as a .zip; the API extracts and locates the .DAT.
+5. **Blueprint's diffusion/CycleGAN/S3Simulator synthesis is a growth path, not shipped**: those
+   need GPU training time and real style-target imagery; the working subset is the physics
+   renderer + shadow-consistent copy-paste + physically-safe augmentation.
+6. **Mission profiles re-rank, never re-detect**: a mission YAML only overrides the severity
+   hazard table and the detector confidence floor, so imagery and physics evidence stay
+   comparable across missions. Mission names are validated against the profile listing (an HTTP
+   form value must never resolve a path).
+7. **The review round found and fixed**: copilot substring hijacks ("lane" in "planes", "high" in
+   "highest"), the LLM path bypassing Python-side dimension filters, missing .sl2/.sl3/.zip
+   upload suffixes (frontend + backend), mission path traversal, SL2 writer epoch overflow, and
+   segmenter YAML keys frozen by checkpoint config precedence.

@@ -7,10 +7,13 @@ imagery. Built for **Smart India Hackathon 2026, PS 26057** (Ministry of Earth S
 theme Disaster Management. **Offline-first**: everything runs on a laptop or Jetson-class edge
 device with zero cloud dependency.
 
-Raw SSS survey logs (XTF / EdgeTech JSF / GeoTIFF mosaics / plain waterfalls) go in one end;
-calibrated, geotagged, physics-verified, prioritized contact reports come out the other — through
-a live web dashboard with a map, waterfall viewer, evidence cards, change detection, and a
-natural-language copilot.
+Raw SSS survey logs (XTF / EdgeTech JSF / Lowrance .sl2/.sl3 / Humminbird .DAT+.SON / GeoTIFF
+mosaics / plain waterfalls) go in one end; calibrated, geotagged, physics-verified, prioritized
+contact reports come out the other — through a live web dashboard with a map, waterfall viewer,
+evidence cards, change detection, cross-survey confirmation, clustered recovery routes, four
+switchable disaster-mode mission profiles, and a natural-language copilot that also drafts
+survey summaries. Feature-by-feature verification against the design blueprint lives in
+[COMPLIANCE.md](COMPLIANCE.md).
 
 ## Architecture
 
@@ -23,9 +26,10 @@ flowchart TD
         D --> E[SAHI tiling with exact pixel-to-ping bookkeeping]
     end
     subgraph L2["L2 · TridentNet"]
-        E --> F[Brain A: YOLO detector]
+        E --> F[Brain A: YOLO deep ensemble]
+        E --> G[Brain B: U-Net net/rope masks]
         E --> H[Brain C: conv-AE anomaly map]
-        F & H --> I[ensemble: corroboration + open-set finds]
+        F & G & H --> I[ensemble: corroboration + open-set finds]
     end
     subgraph L3["L3 · PhysiCheck"]
         I --> J[highlight–shadow pairing · H = L·A/R]
