@@ -1,4 +1,4 @@
-﻿# SAGAR-NETRA TridentNet Brain A (Ultralytics detector) configuration.
+# SAGAR-NETRA TridentNet Brain A (Ultralytics detector) configuration.
 #
 # This file mirrors tridentnet.detector.DEFAULTS line for line and is
 # deep-merged over it; a config dict passed to Detector(config=...) is merged
