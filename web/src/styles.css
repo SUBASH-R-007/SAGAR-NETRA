@@ -1,18 +1,23 @@
 /* ============================================================================
-   SAGAR-NETRA · DRISHTI Console — "Chart room, daylight."
-   Single committed light theme per web/DESIGN.md. Paper ground, ink hairlines,
-   chart-magenta identity accent, severity ramp for status. Radius <= 2px,
-   flat fills only, no glow, one box-shadow rule (floating popover surfaces).
+   SAGAR-NETRA · DRISHTI Console — Government of India portal skin (v2).
+   NIC portal grammar per web/DESIGN.md v2: grey-white body, white panels,
+   navy for structure (strip, nav, footer, primary buttons), saffron for
+   active state, the tricolor ribbon exactly once. v1 information design
+   carries over: hairlines, double-ruled tables, square severity swatches,
+   tabular numerals, radius <= 2px, flat fills, no glow, one box-shadow rule
+   (floating popover surfaces).
 
-   Type scale (the only sizes used):
-     10.5px micro   — mono labels, tags, table heads, captions
-     11px   eyebrow — Archivo 600, +0.08em, uppercase
-     12px   detail  — job sub-lines, small buttons, tooltips
-     12.5px mono    — data, table body
-     13px   ui      — buttons, tabs
-     13.5px body    — readable UI text
-     18px   wordmark
-     20px   stat    — diff stat values
+   Type scale (the only sizes used) — rem so the A- / A / A+ controls
+   (root font-size 87.5% / 100% / 112.5%) scale every label; the rem values
+   equal the v1 px sizes at a 16px root:
+     0.65625rem (10.5px) micro   — mono labels, tags, table heads, captions
+     0.6875rem  (11px)   eyebrow — 600, +0.08em, uppercase
+     0.75rem    (12px)   detail  — job sub-lines, small buttons, tooltips
+     0.78125rem (12.5px) mono    — data, table body
+     0.8125rem  (13px)   ui      — buttons, tabs
+     0.84375rem (13.5px) body    — readable UI text
+     1.125rem   (18px)   wordmark
+     1.25rem    (20px)   stat    — diff stat values
    Spacing rhythm: 8px grid (8 / 16 / 24), 4px half-steps in dense chrome.
    ========================================================================== */
 
@@ -20,22 +25,35 @@
 
 :root {
   /* ground */
-  --paper: #F3F5F2;
-  --panel: #FDFDFC;
-  --well: #E8EEF0;
-  --hairline: #D4DBD6;
-  --hairline-2: #B9C4BD;
+  --paper: #F2F4F7;
+  --panel: #FFFFFF;
+  --well: #E9EDF2;
+  --hairline: #D6DBE3;
+  --hairline-2: #B7C0CC;
 
   /* ink */
-  --ink: #1C2A35;
-  --ink-dim: #5C6E7A;
-  --ink-faint: #8C9BA5;
+  --ink: #1B2733;
+  --ink-dim: #55616E;
+  --ink-faint: #8A94A0;
 
-  /* identity accent — sparingly: active tab, primary buttons, focus, links,
-     progress rules. Never for status. */
-  --magenta: #C0107E;
-  --magenta-ink: #8F0A5D;
-  --magenta-wash: #F9E7F2;
+  /* GoI structure — bars, footer, primary buttons */
+  --navy: #153874;
+  --navy-deep: #0E2A5A;
+  --link: #175CA9;
+
+  /* active state — tab underline, selected segment/row wash */
+  --saffron: #E07C00;
+  --saffron-wash: #FBEEDD;
+
+  /* tricolor ribbon bands only — never reused elsewhere */
+  --saffron-band: #FF9933;
+  --white-band: #FFFFFF;
+  --green-band: #138808;
+
+  --chakra: #06038D;
+
+  /* focus on navy surfaces (saffron fails contrast on navy) */
+  --focus-navy: #FFD9A0;
 
   /* severity semantics — square swatches only, never the accent's job */
   --sev-critical: #BC3116;
@@ -47,20 +65,22 @@
   --ok: #2E6E44;
   --error: #B3261E;
 
-  /* faces */
-  --sans: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
-  --display: 'Archivo', 'Public Sans', 'Segoe UI', sans-serif;
+  /* faces — all bundled (@fontsource), offline-first. Devanagari glyphs fall
+     through the base stack to Noto Sans Devanagari. */
+  --sans: 'Noto Sans', 'Noto Sans Devanagari', 'Segoe UI', system-ui, sans-serif;
+  --devanagari: 'Noto Sans Devanagari', 'Noto Sans', 'Segoe UI', sans-serif;
+  --display: 'Noto Sans', 'Noto Sans Devanagari', 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', Consolas, 'Courier New', monospace;
 
-  /* type scale */
-  --fs-micro: 10.5px;
-  --fs-eyebrow: 11px;
-  --fs-detail: 12px;
-  --fs-mono: 12.5px;
-  --fs-ui: 13px;
-  --fs-body: 13.5px;
-  --fs-wordmark: 18px;
-  --fs-stat: 20px;
+  /* type scale — rem, see header note */
+  --fs-micro: 0.65625rem;
+  --fs-eyebrow: 0.6875rem;
+  --fs-detail: 0.75rem;
+  --fs-mono: 0.78125rem;
+  --fs-ui: 0.8125rem;
+  --fs-body: 0.84375rem;
+  --fs-wordmark: 1.125rem;
+  --fs-stat: 1.25rem;
 }
 
 /* ── base ────────────────────────────────────────────────────────────────── */
@@ -100,8 +120,7 @@ p {
   color: var(--ink-dim);
 }
 
-/* shared eyebrow — condensed uppercase chart label */
-.mast-eyebrow,
+/* shared eyebrow — condensed uppercase label */
 .rail-title,
 .legend-title,
 .empty-eyebrow,
@@ -117,8 +136,21 @@ p {
 /* ── focus & motion ──────────────────────────────────────────────────────── */
 
 :focus-visible {
-  outline: 2px solid var(--magenta);
+  outline: 2px solid var(--saffron);
   outline-offset: 1px;
+}
+
+/* on navy surfaces saffron fails contrast — use the pale-saffron focus tint */
+.govt-strip :focus-visible,
+.tabs :focus-visible,
+.footer :focus-visible {
+  outline-color: var(--focus-navy);
+}
+
+/* programmatic focus target of the skip link — no ring on the whole main */
+.content:focus,
+.content:focus-visible {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -130,7 +162,7 @@ p {
   }
 }
 
-/* ── shell & chart title block ───────────────────────────────────────────── */
+/* ── shell ───────────────────────────────────────────────────────────────── */
 
 .app {
   display: flex;
@@ -139,22 +171,150 @@ p {
   overflow: hidden;
 }
 
-.header {
+/* ── 1 · government strip — exactly 30px, navy-deep ──────────────────────── */
+
+.govt-strip {
   flex: none;
-  background: var(--paper);
-}
-
-.masthead {
+  height: 30px;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 24px 24px 16px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 24px;
+  background: var(--navy-deep);
+  color: #FFFFFF;
+  font-size: var(--fs-eyebrow);
 }
 
-.mast-line {
+.govt-name {
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.govt-name [lang='hi'] {
+  font-family: var(--devanagari);
+}
+
+.govt-tools {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+/* real skip link — visually hidden until keyboard focus lands on it */
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  color: #FFFFFF;
+}
+
+.skip-link:focus {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  text-decoration: underline;
+}
+
+.fs-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.fs-btn {
+  height: 22px;
+  min-width: 24px;
+  padding: 0 4px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+  font-family: var(--sans);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  color: #FFFFFF;
+  cursor: pointer;
+  transition: background 120ms, border-color 120ms;
+}
+
+.fs-btn:hover {
+  border-color: #FFFFFF;
+}
+
+.fs-btn.active {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: #FFFFFF;
+}
+
+/* ── 2 · header band — emblem, designation, identity, SIH tag ────────────── */
+
+.header {
+  flex: none;
+  background: var(--panel);
+}
+
+.header-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 12px 24px;
+  background: var(--panel);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.chakra {
+  flex: none;
+  display: block;
+  color: var(--chakra);
+}
+
+.ministry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ministry-hi {
+  font-family: var(--devanagari);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+}
+
+.ministry-en {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.band-rule {
+  width: 1px;
+  height: 36px;
+  background: var(--hairline-2);
+  flex: none;
+}
+
+.identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
 .wordmark {
@@ -165,55 +325,78 @@ p {
   color: var(--ink);
 }
 
-.mast-rule {
-  width: 1px;
-  height: 20px;
-  background: var(--hairline-2);
-  flex: none;
-}
-
-.mast-meta {
-  font-size: var(--fs-micro);
-  letter-spacing: 0.04em;
+.ident-sub {
+  font-size: var(--fs-detail);
   color: var(--ink-dim);
 }
 
-/* the page's single flourish — the chart keyline closing the title block */
-.keyline {
-  height: 3px;
-  background: var(--magenta);
+.sih-tag {
+  flex: none;
+  padding: 4px 12px;
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: var(--ink-dim);
 }
+
+/* ── 3 · tricolor ribbon — 3px, three equal 1px bands, exactly once ──────── */
+
+.tricolor {
+  flex: none;
+  height: 3px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tricolor span {
+  flex: 1;
+}
+
+.tricolor .t-saffron {
+  background: var(--saffron-band);
+}
+
+.tricolor .t-white {
+  background: var(--white-band);
+}
+
+.tricolor .t-green {
+  background: var(--green-band);
+}
+
+/* ── 4 · nav bar — solid navy, 40px, saffron active underline ────────────── */
 
 .tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 24px;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--hairline-2);
-  background: var(--paper);
+  padding: 0 8px;
+  background: var(--navy);
 }
 
 .tab {
   position: relative;
-  padding: 12px 0;
+  height: 40px;
+  padding: 0 16px;
   background: none;
   border: 0;
-  font-family: var(--display);
+  font-family: var(--sans);
   font-size: var(--fs-ui);
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--ink-dim);
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-  transition: color 120ms;
+  transition: background 120ms, color 120ms;
 }
 
 .tab:hover {
-  color: var(--ink);
+  background: var(--navy-deep);
+  color: #FFFFFF;
 }
 
 .tab.active {
-  color: var(--ink);
+  color: #FFFFFF;
 }
 
 .tab.active::after {
@@ -221,9 +404,24 @@ p {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -1px;
-  height: 2px;
-  background: var(--magenta);
+  bottom: 0;
+  height: 3px;
+  background: var(--saffron);
+}
+
+.tab:focus-visible {
+  outline-offset: -3px;
+}
+
+/* survey metadata line — mono strip kept under the nav on every tab */
+.meta-strip {
+  flex: none;
+  padding: 8px 24px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
 }
 
 .body {
@@ -316,11 +514,11 @@ input[type='text']:hover {
 }
 
 input[type='range'] {
-  accent-color: var(--magenta);
+  accent-color: var(--navy);
 }
 
 input[type='checkbox'] {
-  accent-color: var(--magenta);
+  accent-color: var(--navy);
   width: 14px;
   height: 14px;
 }
@@ -369,14 +567,14 @@ input[type='checkbox'] {
 }
 
 .btn.primary {
-  background: var(--magenta);
-  border-color: var(--magenta);
-  color: var(--panel);
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #FFFFFF;
 }
 
 .btn.primary:hover:not(:disabled) {
-  background: var(--magenta-ink);
-  border-color: var(--magenta-ink);
+  background: var(--navy-deep);
+  border-color: var(--navy-deep);
 }
 
 .btn.ok {
@@ -392,11 +590,12 @@ input[type='checkbox'] {
 .btn.link {
   border-color: transparent;
   background: transparent;
-  color: var(--magenta);
+  color: var(--link);
 }
 
 .btn.link:hover:not(:disabled) {
-  color: var(--magenta-ink);
+  color: var(--navy-deep);
+  text-decoration: underline;
 }
 
 .btn.ghost {
@@ -449,11 +648,11 @@ input[type='checkbox'] {
   border-color: var(--error);
 }
 
-/* live replay mode — an active chip, so it takes the wash */
+/* live replay mode — an active chip, so it takes the saffron wash */
 .tag-live {
-  color: var(--magenta);
-  border-color: var(--magenta);
-  background: var(--magenta-wash);
+  color: var(--saffron);
+  border-color: var(--saffron);
+  background: var(--saffron-wash);
 }
 
 /* physics cues HL / SH */
@@ -579,8 +778,8 @@ input[type='checkbox'] {
 }
 
 .dropzone.drag {
-  border-color: var(--magenta);
-  background: var(--magenta-wash);
+  border-color: var(--saffron);
+  background: var(--saffron-wash);
 }
 
 .dz-text {
@@ -604,6 +803,7 @@ input[type='checkbox'] {
 }
 
 .seg-cell {
+  position: relative;
   flex: 1;
   height: 28px;
   border: 0;
@@ -623,11 +823,22 @@ input[type='checkbox'] {
 }
 
 .seg-cell.active {
-  background: var(--magenta-wash);
-  color: var(--magenta);
+  background: var(--saffron-wash);
+  color: var(--saffron);
 }
 
-/* jobs as a ledger — hairline-separated rows, magenta progress rule */
+/* the spec's 2px saffron top rule, drawn — not a shadow */
+.seg-cell.active::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--saffron);
+}
+
+/* jobs as a ledger — hairline-separated rows, navy progress rule */
 .job-list {
   display: flex;
   flex-direction: column;
@@ -669,7 +880,7 @@ input[type='checkbox'] {
 
 .bar-fill {
   height: 100%;
-  background: var(--magenta);
+  background: var(--navy);
   transition: width 150ms linear;
 }
 
@@ -776,7 +987,7 @@ input[type='checkbox'] {
 }
 
 .contacts-table tr.row.expanded td {
-  background: var(--magenta-wash);
+  background: var(--saffron-wash);
 }
 
 .contacts-table .num {
@@ -850,7 +1061,7 @@ input[type='checkbox'] {
 }
 
 .id-cell:hover {
-  color: var(--magenta-ink);
+  color: var(--link);
 }
 
 .row-thumb {
@@ -1022,7 +1233,7 @@ label.legend-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(243, 245, 242, 0.82);
+  background: rgba(242, 244, 247, 0.82);
   pointer-events: none;
 }
 
@@ -1572,13 +1783,47 @@ label.legend-row {
   }
 }
 
+/* ── 6 · footer — navy band, honest attribution ──────────────────────────── */
+
+.footer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  padding: 12px 24px;
+  background: var(--navy);
+  color: #FFFFFF;
+  font-size: var(--fs-detail);
+  line-height: 1.5;
+}
+
+.footer-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.footer-note {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.footer-mode {
+  flex: none;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.85);
+}
+
 /* ── the ONLY box-shadow in the app: floating popover surfaces ───────────── */
 
 .leaflet-popup-content-wrapper,
 .leaflet-popup-tip,
 .map-legend,
 .toast {
-  box-shadow: 0 4px 16px rgba(28, 42, 53, 0.14);
+  box-shadow: 0 4px 16px rgba(27, 39, 51, 0.14);
 }
 
 /* ── responsive ──────────────────────────────────────────────────────────── */
@@ -1588,14 +1833,20 @@ label.legend-row {
     width: 240px;
   }
 
-  .masthead,
-  .tabs,
+  .govt-strip,
+  .header-band,
+  .meta-strip,
+  .footer,
   .filterbar,
   .wf-toolbar,
   .contacts-toolbar,
   .diff-toolbar {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .tabs {
+    padding: 0;
   }
 
   .map-wrap,

@@ -142,7 +142,7 @@ export default function DiffView({ surveys, pushToast }) {
                     key={`m-${m.b.id || i}`}
                     center={[m.b.lat, m.b.lon]}
                     radius={6}
-                    pathOptions={{ color: '#8C9BA5', fillColor: '#8C9BA5', fillOpacity: 0.4, weight: 1.5 }}
+                    pathOptions={{ color: '#8A94A0', fillColor: '#8A94A0', fillOpacity: 0.4, weight: 1.5 }}
                   >
                     <Tooltip>{`matched: ${m.b.id} · ${m.a?.id} (${Number(m.distance_m).toFixed(1)} m)`}</Tooltip>
                   </CircleMarker>

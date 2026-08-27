@@ -105,3 +105,93 @@ Numbers right-align in tables. Coordinates always mono. No italics anywhere.
 Labels name what operators recognize: "Survey", "Contacts", "Evidence",
 "Recovery", "Confirm", "Reject". No jargon-as-decoration, no exclamation marks,
 no "..." except genuine progress. Buttons say what happens.
+
+---
+
+# v2 — Government of India portal skin (SUPERSEDES the chrome above)
+
+Direction change by the user: the console must read as a **Government of India /
+Ministry of Earth Sciences portal** (the NIC-built visual grammar of
+india.gov.in / moes.gov.in / incois.gov.in), as expected for an SIH submission.
+Everything about information design from v1 (dense double-ruled tables, ledger,
+square severity swatches, hairlines, tabular numerals, focus states, no emoji,
+radius <= 2px, offline @fontsource) CARRIES OVER. What changes is the chrome,
+palette and typography.
+
+## Tokens v2
+
+```css
+:root {
+  --paper:    #F2F4F7;   /* portal body grey-white */
+  --panel:    #FFFFFF;
+  --well:     #E9EDF2;
+  --hairline: #D6DBE3;
+  --hairline-2: #B7C0CC;
+
+  --ink:      #1B2733;
+  --ink-dim:  #55616E;
+  --ink-faint:#8A94A0;
+
+  --navy:     #153874;   /* GoI portal navy — nav bar, footer, primary buttons */
+  --navy-deep:#0E2A5A;   /* top strip, hover */
+  --link:     #175CA9;
+
+  --saffron:  #E07C00;   /* active-tab underline, key highlights (flag saffron, text-safe) */
+  --saffron-band: #FF9933;  /* tricolor ribbon only */
+  --white-band:   #FFFFFF;
+  --green-band:   #138808;  /* tricolor ribbon only */
+  --chakra:   #06038D;   /* Ashoka Chakra blue */
+
+  /* severity + state ramps: unchanged from v1 */
+}
+```
+
+Accent discipline v2: **navy is structure** (bars, primary buttons), **saffron is
+state** (active tab underline, selected segment), the tricolor band appears
+EXACTLY once (a 3px saffron/white/green ribbon under the header band). Magenta
+is retired everywhere (focus rings become saffron on light, white on navy).
+
+## Typography v2 (all @fontsource, offline)
+
+| Role | Face |
+|---|---|
+| Everything bilingual/UI/headers | **Noto Sans** 400/500/600/700 + **Noto Sans Devanagari** 400/600 |
+| Data (ids, coordinates, numbers) | **IBM Plex Mono** 400/500 (unchanged, tabular-nums) |
+
+Hindi precedes English in all government designations, per GoI norms.
+
+## Chrome structure v2 (top to bottom)
+
+1. **Government strip** — `--navy-deep`, 30px: left `भारत सरकार | GOVERNMENT OF
+   INDIA`; right: working accessibility controls — `Skip to main content`
+   (visually hidden until focused), `A-  A  A+` font-size controls (persist via
+   localStorage, adjust root font-size 87.5%/100%/112.5%).
+2. **Header band** — white: left = Ashoka **Chakra** drawn as precise inline
+   SVG (24 spokes, `--chakra`, 44px) — NOT the State Emblem (restricted; a slot
+   comment tells the team where to drop their official emblem asset for the
+   submission) — beside a two-line designation block: `पृथ्वी विज्ञान मंत्रालय`
+   (Devanagari 600) over `MINISTRY OF EARTH SCIENCES` (tracked caps), a thin
+   vertical rule, then the portal identity: `SAGAR-NETRA` (700) over
+   `DRISHTI Survey Console — AI Marine Debris Detection`. Right-aligned: a
+   bordered tag block `SMART INDIA HACKATHON 2026 · PS 26057` in mono.
+3. **Tricolor ribbon** — 3px, three equal bands saffron/white/green, full width.
+4. **Nav bar** — solid `--navy`, 40px: the five tabs as white uppercase Noto
+   Sans 600 13px links, active = `--saffron` 3px underline + slightly brighter;
+   hover = `--navy-deep`. The survey/class/confidence filter strip stays below
+   on paper as v1.
+5. **Main** — unchanged structure from v1 (wells, rail, tables), retokened.
+6. **Footer** — `--navy`, white text, two lines: `Prototype developed for Smart
+   India Hackathon 2026 — Problem Statement 26057 (Ministry of Earth Sciences /
+   NIOT)` and a dim second line `This is a hackathon prototype, not an official
+   Government of India website.` — the honest line that every serious SIH team
+   ships. Right: `Offline-first · Zero cloud dependency` in mono.
+
+## Component retokens
+
+- Primary buttons: navy fill, white text; hover `--navy-deep`. Secondary: 1px
+  navy border on white. Links `--link`, underlined on hover.
+- Segmented control active cell: saffron-tinted wash `#FBEEDD` + `--saffron`
+  text + 2px saffron top rule.
+- Toast rules, tags, tables, legend, Leaflet chrome: as v1, retokened
+  (ink/navy in place of magenta family).
+- Focus: 2px `--saffron` outline on light surfaces, 2px `#FFD9A0` on navy.

@@ -9,9 +9,9 @@ import EmptyState from './EmptyState'
 import MapResize from './MapResize'
 
 const CENTER = [13.05, 80.35]
-// Zone outlines rotate through the ink/state family (DESIGN.md tokens) —
-// dashed hairwork like restricted areas on a paper chart.
-const LAYER_COLORS = ['#1C2A35', '#5C6E7A', '#2E6E44', '#8F0A5D']
+// Zone outlines rotate through the ink/state/navy family (DESIGN.md v2
+// tokens) — dashed hairwork like restricted areas on a paper chart.
+const LAYER_COLORS = ['#1B2733', '#55616E', '#2E6E44', '#153874']
 
 // leaflet.heat attaches L.heatLayer to the Leaflet global; drive it manually.
 function HeatLayer({ points, enabled }) {
