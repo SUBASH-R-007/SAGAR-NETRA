@@ -51,7 +51,7 @@ from physicheck.calibrate import PhysicsGate
 from physicheck.verify import verify_detections
 from sonar_core.parsers.base import PingArray
 from sonar_core.parsers.base import load as load_survey
-from sonar_core.preprocess.pipeline import preprocess
+from sonar_core.preprocess.pipeline import DEFAULTS, _deep_merge, preprocess
 
 EmitFn = Callable[[dict[str, Any]], None]
 
@@ -93,6 +93,38 @@ def _window_starts(n_pings: int, window_pings: int, overlap_pings: int) -> list[
     while starts[-1] + window_pings < n_pings:
         starts.append(starts[-1] + step)
     return starts
+
+
+def _window_preprocess_config(
+    base: dict[str, Any] | None, window_pings: int, total_pings: int
+) -> dict[str, Any]:
+    """Preprocess config for one window, with CLAHE kept scale-invariant.
+
+    CLAHE equalizes each cell of a fixed ``tile_grid`` independently, so the
+    grid's *row* count decides how many pings share one transfer curve. A
+    window is far shorter than the survey, so the stock ``(8, 8)`` grid gives
+    it much thinner cells (25 pings instead of ~75 on a 600-ping line) and
+    equalizes far more aggressively — which lifts Rayleigh speckle into
+    structure the anomaly autoencoder was never trained on. Measured on a
+    600-ping survey: 0.50 anomalies/tile whole, **19.8/tile** in 200-ping
+    windows, i.e. a flood of spurious ``unknown_anomaly`` contacts.
+
+    Scaling the row count by the window's share of the survey restores the
+    same pings-per-cell the batch path uses (1.17/tile measured), so streamed
+    and batch imagery are equalized alike and the calibrated anomaly
+    threshold stays meaningful. Column count is untouched: swath width does
+    not change window to window.
+    """
+    merged = _deep_merge(DEFAULTS, base or {})
+    grid = merged["clahe"]["tile_grid"]
+    cols, rows = int(grid[0]), int(grid[1])
+    if total_pings > 0 and window_pings > 0:
+        rows = max(1, round(rows * window_pings / total_pings))
+    config = dict(base or {})
+    clahe_cfg = dict(config.get("clahe", {}))
+    clahe_cfg["tile_grid"] = (cols, rows)
+    config["clahe"] = clahe_cfg
+    return config
 
 
 def _better_observation(a: Contact, b: Contact) -> bool:
@@ -233,7 +265,12 @@ def stream_survey(
     for w, start in enumerate(starts):
         stop = min(start + window_pings, total_pings)
         window = pa.slice_pings(start, stop)
-        pre = preprocess(window, config=preprocess_config)
+        pre = preprocess(
+            window,
+            config=_window_preprocess_config(
+                preprocess_config, stop - start, total_pings
+            ),
+        )
         detections = detector.detect_tiles(pre.tiles)
         n_tiles += len(pre.tiles)
         n_detections += len(detections)

@@ -159,3 +159,31 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
 6. **The PDF's stack deltas we did not adopt**: TypeScript/Tailwind/Recharts (working JSX+CSS
    dashboard stays; charts are hand-rolled where needed), DeepLabV3+ (U-Net specialist), YOLOv8-s
    (v8n per the PDF's own Jetson-class advice). Functional parity, not framework churn.
+
+## Live-stream consistency round
+
+1. **Streaming windows must be equalised like the whole survey.** CLAHE divides an image into a
+   fixed `tile_grid` of cells and equalises each independently, so the grid's *row* count decides
+   how many pings share one transfer curve. A 200-ping window under the stock `(8, 8)` grid gets
+   25 pings per cell against a 600-ping survey's 75 — a 3x more aggressive equaliser on identical
+   seabed, which lifts Rayleigh speckle into structure the anomaly autoencoder never saw in
+   training. Because Brain C's threshold is calibrated once at training time, it then fired
+   everywhere: measured **0.50 anomalies/tile** over the whole survey against **19.8/tile** in
+   windows, i.e. a 600-ping survey with 3 seeded targets streamed as **179 contacts** (175 of them
+   spurious `unknown_anomaly`) versus 12 in batch.
+2. **The fix scales the CLAHE row count by the window's share of the survey**
+   (`api.realtime._window_preprocess_config`), restoring comparable pings-per-cell. Streamed
+   output fell to 27 contacts with the real detections identical to batch (ghost_net, container,
+   cylinder_drum, tire — one each). Column count is untouched: swath width does not vary window
+   to window. Batch is unaffected — a window covering the whole survey resolves to the stock grid.
+3. **Ruled out by measurement, not assumption:** forcing the window to use the full survey's
+   percentile-stretch bounds *increased* the flood (23.3/tile), so the global stretch was not the
+   cause. Only the cell geometry mattered.
+4. **The residual gap is coverage, not normalisation.** Streaming re-processes overlapping pings,
+   so it examines 24 tiles where batch examines 12; the remaining anomaly excess scales with that
+   and is dominated by low-confidence (~11%) contacts that sort to the bottom of the severity
+   queue.
+5. **Latent issue worth knowing:** the same scale dependence means two *batch* surveys of very
+   different lengths are also equalised slightly differently. Training scenes span 700–1100 pings
+   so the deployed models see a narrow band of this, but expressing the CLAHE grid in pixels
+   rather than cell counts is the principled long-term fix.
