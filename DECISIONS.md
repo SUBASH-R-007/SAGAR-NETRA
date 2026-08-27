@@ -135,3 +135,27 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
    "highest"), the LLM path bypassing Python-side dimension filters, missing .sl2/.sl3/.zip
    upload suffixes (frontend + backend), mission path traversal, SL2 writer epoch overflow, and
    segmenter YAML keys frozen by checkpoint config precedence.
+
+## Technical-approach round (from TECHNICAL APPROACH.pdf + SIH26057 strategy doc)
+
+1. **Stage-2 verifier is explainable by construction**: a gradient-boosted classifier over 13
+   hand-crafted physics features (shadow-edge linearity, contour regularity, texture-entropy
+   delta, cross-ping persistence, ...) trained WITHOUT the detector — labels come from rendered
+   truth geometry, negatives from rocks/ripple-band/background boxes, split by scene. With no
+   checkpoint present, confidences are bit-identical to the Stage-1 pipeline (golden-tested).
+2. **Cross-ping temporal gate demotes, never deletes** (`min_persistence_pings`), and its reason
+   string states the measured extent vs the threshold.
+3. **Streaming dedup keeps the STRONGER observation, cross-window pairs only** (adversarial
+   review caught the first-seen rule storing boundary-clipped fragments and merging distinct
+   same-window neighbours 8 m apart; both are regression-tested now). Replacements keep the
+   operator-visible id plus any review/recovery already recorded.
+4. **INT8 honesty**: dynamic-quantized ONNX is 3.1 MB (vs 11.6 fp32, sub-10 MB target met) but
+   SLOWER on this x86 CPU (no VNNI int8 conv path) — its speed claim belongs to Jetson TensorRT,
+   and the benchmark table says so instead of hiding it.
+5. **Ablation on synthetic held-out scenes is a relative ladder, not a real-data claim**
+   (`outputs/metrics/ablation.md` preamble): FP/km² 469 → 147 (physics gate) → 98 (ML verifier)
+   at held recall; rows (c)/(d) coincide because ensemble consensus already kills 1–2-ping
+   returns — the temporal gate is the single-model backstop.
+6. **The PDF's stack deltas we did not adopt**: TypeScript/Tailwind/Recharts (working JSX+CSS
+   dashboard stays; charts are hand-rolled where needed), DeepLabV3+ (U-Net specialist), YOLOv8-s
+   (v8n per the PDF's own Jetson-class advice). Functional parity, not framework churn.

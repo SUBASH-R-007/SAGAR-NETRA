@@ -24,15 +24,42 @@ noise approximates Rayleigh speckle (which is multiplicative, not additive),
 small gaussian blur stands in for defocus and motion smear, and
 brightness/contrast/gamma cover residual TVG and display-mapping differences
 between sonar models.
+
+A final ``Lambda`` stage composes the PS-named acquisition artifacts — heave
+banding, pitch stretch, roll shear, ping dropout, resolution jitter (see
+:mod:`sonar_core.synth.artifacts` for the physics). All five respect the same
+column-axis rule: none mirrors or reorders ground range. This image-only
+pipeline may use the full set, including the two transforms that move pixels;
+the label-bearing dataset path in :mod:`tridentnet.data` is restricted to the
+label-safe subset instead.
 """
 
 from __future__ import annotations
 
 import random
+from collections.abc import Callable
 
 import albumentations as alb
 import cv2
 import numpy as np
+
+from sonar_core.synth.artifacts import apply_artifacts
+
+
+def _artifact_fn(p_each: float) -> Callable[..., np.ndarray]:
+    """Adapt :func:`apply_artifacts` to ``alb.Lambda``'s image callback.
+
+    albumentations 1.4.15 passes no RNG to Lambda callbacks, so a fresh
+    :class:`numpy.random.Generator` is derived per call from the NumPy legacy
+    global state — the same state ``train_augment(seed=...)`` seeds — keeping
+    artifact draws reproducible alongside the rest of the pipeline.
+    """
+
+    def _apply(image: np.ndarray, **_: object) -> np.ndarray:
+        rng = np.random.default_rng(np.random.randint(0, 2**31 - 1))
+        return apply_artifacts(image, rng, p_each=p_each)
+
+    return _apply
 
 
 def train_augment(
@@ -51,6 +78,7 @@ def train_augment(
     translate_frac: float = 0.06,
     scale_range: tuple[float, float] = (0.95, 1.05),
     p_affine: float = 0.5,
+    artifact_p_each: float = 0.35,
 ) -> alb.Compose:
     """Build the training-chip augmentation pipeline (see module docstring).
 
@@ -61,40 +89,49 @@ def train_augment(
     All magnitudes are keyword-tunable; the defaults are mild on purpose:
     augmentation must vary radiometry and along-track sampling, never
     manufacture geometry a sonar could not record.
+
+    *artifact_p_each* is the per-artifact probability of the PS acquisition
+    artifacts composed as the final stage (see module docstring); 0 disables
+    the stage entirely.
     """
     if seed is not None:
         random.seed(seed)
         np.random.seed(seed)
-    return alb.Compose(
-        [
-            # Speckle is multiplicative in amplitude, so multiplicative
-            # elementwise noise is the physically right family (additive
-            # gaussian would wash out shadows, which are near-zero signal).
-            alb.MultiplicativeNoise(multiplier=noise_multiplier, elementwise=True, p=p_noise),
-            alb.GaussianBlur(blur_limit=blur_limit, p=p_blur),
-            alb.RandomBrightnessContrast(
-                brightness_limit=brightness_limit,
-                contrast_limit=contrast_limit,
-                p=p_brightness_contrast,
-            ),
-            alb.RandomGamma(gamma_limit=gamma_limit, p=p_gamma),
-            # Along-track (row) flip only -- NEVER HorizontalFlip (see module
-            # docstring: it would mirror shadows to the nadir side).
-            alb.VerticalFlip(p=p_vflip),
-            # Along-track-only jitter: y translate/scale, x frozen, no
-            # rotation/shear (both would break shadow direction). Reflection
-            # padding along-track is itself a valid sonar image (it equals a
-            # locally reversed ping order), unlike constant black bars.
-            alb.Affine(
-                scale={"x": 1.0, "y": scale_range},
-                translate_percent={"x": 0.0, "y": (-translate_frac, translate_frac)},
-                rotate=0.0,
-                shear=0.0,
-                mode=cv2.BORDER_REFLECT_101,
-                p=p_affine,
-            ),
-        ]
-    )
+    transforms: list[alb.BasicTransform] = [
+        # Speckle is multiplicative in amplitude, so multiplicative
+        # elementwise noise is the physically right family (additive
+        # gaussian would wash out shadows, which are near-zero signal).
+        alb.MultiplicativeNoise(multiplier=noise_multiplier, elementwise=True, p=p_noise),
+        alb.GaussianBlur(blur_limit=blur_limit, p=p_blur),
+        alb.RandomBrightnessContrast(
+            brightness_limit=brightness_limit,
+            contrast_limit=contrast_limit,
+            p=p_brightness_contrast,
+        ),
+        alb.RandomGamma(gamma_limit=gamma_limit, p=p_gamma),
+        # Along-track (row) flip only -- NEVER HorizontalFlip (see module
+        # docstring: it would mirror shadows to the nadir side).
+        alb.VerticalFlip(p=p_vflip),
+        # Along-track-only jitter: y translate/scale, x frozen, no
+        # rotation/shear (both would break shadow direction). Reflection
+        # padding along-track is itself a valid sonar image (it equals a
+        # locally reversed ping order), unlike constant black bars.
+        alb.Affine(
+            scale={"x": 1.0, "y": scale_range},
+            translate_percent={"x": 0.0, "y": (-translate_frac, translate_frac)},
+            rotate=0.0,
+            shear=0.0,
+            mode=cv2.BORDER_REFLECT_101,
+            p=p_affine,
+        ),
+    ]
+    if artifact_p_each > 0.0:
+        # PS acquisition artifacts run last: they model recording-time faults
+        # (banding, dropout, resampling) that act on the already-formed image.
+        transforms.append(
+            alb.Lambda(image=_artifact_fn(artifact_p_each), name="ps_artifacts", p=1.0)
+        )
+    return alb.Compose(transforms)
 
 
 def apply_chip(aug: alb.Compose, img_u8: np.ndarray) -> np.ndarray:

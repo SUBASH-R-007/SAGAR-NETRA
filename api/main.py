@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import time
 import urllib.request
+from collections import deque
 from pathlib import Path
 from typing import Any
 
@@ -30,9 +32,10 @@ from pydantic import BaseModel
 from api import copilot as copilot_mod
 from api.db import ContactRepo
 from api.diff import diff_surveys
-from api.jobs import JobRegistry
+from api.jobs import Job, JobRegistry
 from api.processing import DEFAULT_OUTPUT_ROOT, REPO_ROOT, process_survey
-from geoscribe.contact import ReviewStatus
+from api.realtime import model_inventory, stream_survey
+from geoscribe.contact import RecoveryStatus, ReviewStatus
 from geoscribe.severity import list_missions, load_mission
 
 #: .zip is the transport for Humminbird recordings (a .DAT plus its sibling
@@ -45,11 +48,19 @@ UPLOAD_SUFFIXES = {
 TILE_CACHE = REPO_ROOT / "data" / "tile_cache"
 OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 WS_POLL_S = 0.25
+#: Stream-mode events kept on a job snapshot (the WS forwards this window,
+#: so a reconnecting dashboard replays the freshest detections, not megabytes).
+RECENT_EVENTS_CAP = 50
+UPLOAD_MODES = ("batch", "stream")
 
 
 class ReviewRequest(BaseModel):
     status: ReviewStatus
     notes: str | None = None
+
+
+class RecoveryRequest(BaseModel):
+    status: RecoveryStatus
 
 
 class CopilotRequest(BaseModel):
@@ -68,12 +79,56 @@ def create_app(
     app.state.upload_dir = Path(upload_dir or REPO_ROOT / "data" / "uploads")
     app.state.output_root = Path(output_root or DEFAULT_OUTPUT_ROOT)
     app.state.detector_factory = detector_factory
+    #: job id -> {"mode", "events", "lock"} for stream-mode uploads only;
+    #: kept outside Job so the dataclass snapshot contract stays untouched.
+    app.state.stream_meta = {}
+    #: edge telemetry updated after every processing run (batch or stream).
+    app.state.last_run = None
+    app.state.tiles_per_s_last = None
+
+    def _job_snapshot(job: Job) -> dict[str, Any]:
+        """Job snapshot plus stream-mode extras (mode + bounded event window)."""
+        snap = job.snapshot()
+        meta = app.state.stream_meta.get(job.id)
+        if meta is not None:
+            snap["mode"] = meta["mode"]
+            with meta["lock"]:
+                snap["recent_events"] = list(meta["events"])
+        return snap
 
     # ------------------------------------------------------------- health --
 
     @app.get("/api/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "service": "sagar-netra"}
+    def health() -> dict[str, Any]:
+        """Edge telemetry: model fingerprints, memory, last-run throughput.
+
+        Model state is reported from file existence/hashes only — a health
+        probe must never pay (or hide) a model load.
+        """
+        import psutil
+
+        rows = app.state.repo.surveys()
+        last_survey = None
+        if rows:
+            row = rows[0]  # surveys() orders by processed_at DESC
+            last_run = app.state.last_run
+            last_survey = {
+                "name": row["name"],
+                "n_contacts": row["n_contacts"],
+                "seconds": (
+                    last_run["seconds"]
+                    if last_run and last_run["survey"] == row["name"]
+                    else None
+                ),
+            }
+        return {
+            "status": "ok",
+            "service": "sagar-netra",
+            **model_inventory(),
+            "memory_mb": round(psutil.Process().memory_info().rss / (1024 * 1024), 1),
+            "last_survey": last_survey,
+            "tiles_per_s_last": app.state.tiles_per_s_last,
+        }
 
     # ------------------------------------------------------------- upload --
 
@@ -81,10 +136,15 @@ def create_app(
     async def upload(
         file: UploadFile = File(...),  # noqa: B008 - FastAPI idiom
         mission: str | None = Form(None),  # noqa: B008 - FastAPI idiom
+        mode: str = Form("batch"),  # noqa: B008 - FastAPI idiom
     ) -> dict[str, str]:
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in UPLOAD_SUFFIXES:
             raise HTTPException(415, f"unsupported file type {suffix!r}")
+        if mode not in UPLOAD_MODES:
+            raise HTTPException(422, f"mode must be one of {UPLOAD_MODES}, got {mode!r}")
+        if mission and mode == "stream":
+            raise HTTPException(422, "mission profiles apply to batch mode only")
         if mission:
             try:  # validate before accepting the upload; processing re-loads it
                 load_mission(mission)
@@ -100,19 +160,63 @@ def create_app(
             dest = _extract_recording_zip(dest)
 
         job = app.state.jobs.create(dest.name)
+        registry = app.state.jobs
+
+        emit = None
+        if mode == "stream":
+            meta = {
+                "mode": mode,
+                "events": deque(maxlen=RECENT_EVENTS_CAP),
+                "lock": threading.Lock(),
+            }
+            app.state.stream_meta[job.id] = meta
+
+            def emit(event: dict[str, Any]) -> None:
+                """Stream sink: keep the bounded event window, map window
+                progress onto the job, and bump the job version so the WS
+                forwards a fresh snapshot for every event."""
+                with meta["lock"]:
+                    meta["events"].append(event)
+                fields: dict[str, Any] = {}
+                if event.get("type") == "window" and event.get("total_pings"):
+                    done, total = event["done_pings"], event["total_pings"]
+                    fields = {
+                        "stage": "stream",
+                        "fraction": round(done / total, 3),
+                        "message": f"streamed {done}/{total} pings",
+                    }
+                registry.update(job.id, **fields)
 
         def run() -> None:
-            registry = app.state.jobs
             registry.update(job.id, status="running", stage="parse")
+            t0 = time.perf_counter()
             try:
-                summary = process_survey(
-                    dest,
-                    app.state.repo,
-                    update=lambda **f: registry.update(job.id, **f),
-                    detector_factory=app.state.detector_factory,
-                    output_root=app.state.output_root,
-                    mission=mission or None,
+                if mode == "stream":
+                    summary = stream_survey(
+                        dest,
+                        app.state.repo,
+                        emit=emit,
+                        detector_factory=app.state.detector_factory,
+                        output_root=app.state.output_root,
+                    )
+                else:
+                    summary = process_survey(
+                        dest,
+                        app.state.repo,
+                        update=lambda **f: registry.update(job.id, **f),
+                        detector_factory=app.state.detector_factory,
+                        output_root=app.state.output_root,
+                        mission=mission or None,
+                    )
+                elapsed = time.perf_counter() - t0
+                app.state.tiles_per_s_last = round(
+                    summary["n_tiles"] / max(elapsed, 1e-9), 2
                 )
+                app.state.last_run = {
+                    "survey": summary["survey"],
+                    "n_contacts": summary["n_contacts"],
+                    "seconds": round(elapsed, 2),
+                }
                 registry.update(
                     job.id, status="done", stage="done", fraction=1.0,
                     survey=summary["survey"], n_contacts=summary["n_contacts"],
@@ -126,14 +230,14 @@ def create_app(
 
     @app.get("/api/jobs")
     def jobs() -> list[dict[str, Any]]:
-        return [j.snapshot() for j in app.state.jobs.all()]
+        return [_job_snapshot(j) for j in app.state.jobs.all()]
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str) -> dict[str, Any]:
         job = app.state.jobs.get(job_id)
         if job is None:
             raise HTTPException(404, "unknown job")
-        return job.snapshot()
+        return _job_snapshot(job)
 
     @app.websocket("/api/jobs/{job_id}/progress")
     async def job_progress(ws: WebSocket, job_id: str) -> None:
@@ -147,7 +251,7 @@ def create_app(
                     break
                 if job.version != last_version:
                     last_version = job.version
-                    await ws.send_json(job.snapshot())
+                    await ws.send_json(_job_snapshot(job))
                 if job.status in ("done", "error"):
                     break
                 await asyncio.sleep(WS_POLL_S)
@@ -190,10 +294,23 @@ def create_app(
             raise HTTPException(404, "unknown contact")
         return updated.model_dump(mode="json")
 
+    @app.post("/api/contacts/{contact_id}/recovery")
+    def recovery(contact_id: str, body: RecoveryRequest) -> dict[str, Any]:
+        """Advance the recovery workflow: flagged -> assigned -> retrieved."""
+        updated = app.state.repo.set_recovery(contact_id, body.status)
+        if updated is None:
+            raise HTTPException(404, "unknown contact")
+        return updated.model_dump(mode="json")
+
     @app.get("/api/reviews/export")
     def review_export() -> list[dict[str, Any]]:
         """The append-only review trail (future retraining label set)."""
         return app.state.repo.review_log()
+
+    @app.get("/api/recovery/log")
+    def recovery_export() -> list[dict[str, Any]]:
+        """The append-only recovery audit trail (operations record)."""
+        return app.state.repo.recovery_log()
 
     def _contact_image(contact_id: str, attr: str) -> FileResponse:
         found = app.state.repo.get(contact_id)

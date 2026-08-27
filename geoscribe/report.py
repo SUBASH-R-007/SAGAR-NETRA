@@ -10,6 +10,7 @@ import csv
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from geoscribe.contact import Contact, contacts_json_schema
 
@@ -22,6 +23,36 @@ SEVERITY_BANDS = (  # (min score, label, KML/HTML color)
     (0.0, "low", "34c759"),
 )
 
+#: Confidence floor (percent) for the summary block's ``high_confidence`` count.
+HIGH_CONFIDENCE_PCT = 70.0
+
+#: Severity band label -> operator triage priority. The *thresholds* live only
+#: in :data:`SEVERITY_BANDS` (critical >= 75, high >= 50), so colors, priority
+#: and recommended actions can never disagree about where a band starts.
+PRIORITY_BY_BAND: dict[str, str] = {
+    "critical": "HIGH",
+    "high": "MEDIUM",
+    "medium": "LOW",
+    "low": "LOW",
+}
+
+#: Bands counted as "high severity" by the action rule table (score >= 50).
+_HIGH_BANDS: tuple[str, ...] = ("critical", "high")
+
+#: Recommended-action rule table, first matching row wins:
+#: (classes, bands the rule applies to — None matches any severity, action).
+#: Class-only rules come first: a possible victim or a mine-like object needs
+#: the same response regardless of how the severity blend happened to score it.
+ACTION_RULES: tuple[tuple[frozenset[str], tuple[str, ...] | None, str], ...] = (
+    (frozenset({"human_body"}), None, "Notify SAR authority immediately"),
+    (frozenset({"mine_like"}), None, "Do NOT approach — notify naval EOD"),
+    (frozenset({"ghost_net"}), _HIGH_BANDS, "Entanglement hazard — flag for ROV recovery"),
+    (frozenset({"container", "wreck"}), _HIGH_BANDS, "Navigation hazard — report to port authority"),
+)
+
+#: Fallback when no rule matches: the contact is logged, not escalated.
+DEFAULT_ACTION = "Log and monitor"
+
 
 def severity_band(score: float) -> tuple[str, str]:
     for threshold, label, color in SEVERITY_BANDS:
@@ -30,17 +61,69 @@ def severity_band(score: float) -> tuple[str, str]:
     return "low", SEVERITY_BANDS[-1][2]
 
 
+def priority_for(severity: float) -> str:
+    """Triage priority from the severity bands: HIGH in the critical band
+    (>= 75), MEDIUM in the high band (>= 50), LOW below."""
+    band, _ = severity_band(severity)
+    return PRIORITY_BY_BAND[band]
+
+
+def recommended_action_for(cls: str, severity: float) -> str:
+    """Operator instruction from the :data:`ACTION_RULES` (class, band) table."""
+    band, _ = severity_band(severity)
+    for classes, bands, action in ACTION_RULES:
+        if cls in classes and (bands is None or band in bands):
+            return action
+    return DEFAULT_ACTION
+
+
 def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat(timespec="seconds")
 
 
-def write_contacts_json(contacts: list[Contact], path: str | Path, survey: str) -> Path:
+def _summary_block(
+    contacts: list[Contact], survey_stats: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Survey-level roll-up for contacts.json (strategy-PDF section 5.3).
+
+    Coverage numbers come from ``survey_stats`` (see
+    :func:`geoscribe.build.survey_stats`); without them — old callers, fast
+    preview passes — the counts still stand and the coverage keys are null,
+    which the published schema allows.
+    """
+    summary: dict[str, Any] = {
+        "total_detections": len(contacts),
+        "high_confidence": sum(1 for c in contacts if c.confidence >= HIGH_CONFIDENCE_PCT),
+        "area_surveyed_sqkm": None,
+        "debris_density_per_sqkm": None,
+        "sonar_config": None,
+    }
+    if survey_stats:
+        area = survey_stats.get("area_surveyed_sqkm")
+        summary["area_surveyed_sqkm"] = area
+        if area:  # density over a zero-area track would be a lie, keep it null
+            summary["debris_density_per_sqkm"] = round(len(contacts) / area, 2)
+        summary["sonar_config"] = {
+            "range_m": survey_stats.get("range_m"),
+            "altitude_m": survey_stats.get("altitude_m"),
+            "n_pings": survey_stats.get("n_pings"),
+        }
+    return summary
+
+
+def write_contacts_json(
+    contacts: list[Contact],
+    path: str | Path,
+    survey: str,
+    survey_stats: dict[str, Any] | None = None,
+) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     doc = {
         "survey": survey,
         "generated_at": _now_iso(),
         "pipeline_version": PIPELINE_VERSION,
+        "summary": _summary_block(contacts, survey_stats),
         "contacts": [c.model_dump(mode="json") for c in contacts],
     }
     path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
@@ -59,7 +142,8 @@ def write_contacts_csv(contacts: list[Contact], path: str | Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     columns = [
-        "id", "class", "confidence_pct", "severity", "lat", "lon",
+        "id", "class", "confidence_pct", "severity", "priority", "recommended_action",
+        "lat", "lon", "position_accuracy_m",
         "length_m", "width_m", "height_m", "depth_m", "highlight", "shadow",
         "physics_violation", "side", "ping0", "ping1", "col0", "col1",
         "detected_at", "review", "survey",
@@ -69,7 +153,8 @@ def write_contacts_csv(contacts: list[Contact], path: str | Path) -> Path:
         writer.writerow(columns)
         for c in contacts:
             writer.writerow([
-                c.id, c.cls, c.confidence, c.severity, c.lat, c.lon,
+                c.id, c.cls, c.confidence, c.severity, c.priority, c.recommended_action,
+                c.lat, c.lon, c.position_accuracy_m,
                 c.dims.length_m, c.dims.width_m, c.dims.height_m, c.depth_m,
                 c.physics.highlight, c.physics.shadow, c.physics.physics_violation,
                 c.pixel.side, c.pixel.ping0, c.pixel.ping1, c.pixel.col0, c.pixel.col1,
@@ -186,10 +271,10 @@ def write_report_pdf(
     ]
 
     # Summary table.
-    rows = [["ID", "Class", "Conf %", "Severity", "Lat", "Lon", "L×W (m)", "H (m)"]]
+    rows = [["ID", "Class", "Conf %", "Severity", "Priority", "Lat", "Lon", "L×W (m)", "H (m)"]]
     for c in contacts:
         rows.append([
-            c.id, c.cls, f"{c.confidence:.0f}", f"{c.severity:.0f}",
+            c.id, c.cls, f"{c.confidence:.0f}", f"{c.severity:.0f}", c.priority,
             f"{c.lat:.5f}", f"{c.lon:.5f}",
             f"{c.dims.length_m:.1f}x{c.dims.width_m:.1f}",
             "-" if c.dims.height_m is None else f"{c.dims.height_m:.1f}",
@@ -240,12 +325,21 @@ def write_report_pdf(
 
 
 def write_all(
-    contacts: list[Contact], out_dir: str | Path, survey: str
+    contacts: list[Contact],
+    out_dir: str | Path,
+    survey: str,
+    survey_stats: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
-    """The full report bundle; returns format -> written path."""
+    """The full report bundle; returns format -> written path.
+
+    ``survey_stats`` (see :func:`geoscribe.build.survey_stats`) feeds the
+    contacts.json summary block; None leaves its coverage numbers null.
+    """
     out_dir = Path(out_dir)
     return {
-        "json": write_contacts_json(contacts, out_dir / "contacts.json", survey),
+        "json": write_contacts_json(
+            contacts, out_dir / "contacts.json", survey, survey_stats=survey_stats
+        ),
         "schema": write_json_schema(out_dir / "contacts.schema.json"),
         "csv": write_contacts_csv(contacts, out_dir / "contacts.csv"),
         "geojson": write_contacts_geojson(contacts, out_dir / "contacts.geojson"),

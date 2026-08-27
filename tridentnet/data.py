@@ -47,6 +47,7 @@ from PIL import Image
 
 from sonar_core.preprocess.pipeline import preprocess
 from sonar_core.preprocess.slant_range import GroundImage
+from sonar_core.synth.artifacts import LABEL_SAFE_ARTIFACTS, apply_artifacts
 from sonar_core.synth.scene import SceneConfig, SynthTarget, make_scene
 from tridentnet.classes import CLASS_NAMES, CLASS_TO_ID
 
@@ -347,13 +348,52 @@ def _labels_in_window(
     return lines
 
 
-def _write_chip(view: np.ndarray, path: Path) -> None:
+def _write_chip(
+    view: np.ndarray,
+    path: Path,
+    artifact_fn: Callable[[np.ndarray], np.ndarray] | None = None,
+) -> None:
     """Enhanced ground pixels (finite values in [0, 1], NaN beyond the swath)
     to 8-bit grayscale PNG. NaN maps to 0: out-of-swath fill becomes black,
     matching the darkness of true acoustic shadow rather than inventing
-    texture."""
+    texture. *artifact_fn*, when given, transforms the quantized uint8 chip
+    just before saving (artifacts run post-quantization, on exactly the pixel
+    values a real recorder would corrupt); ``None`` keeps the historical byte
+    stream untouched."""
     arr = np.clip(np.nan_to_num(view, nan=0.0), 0.0, 1.0)
-    Image.fromarray(np.round(arr * 255.0).astype(np.uint8), mode="L").save(path)
+    u8 = np.round(arr * 255.0).astype(np.uint8)
+    if artifact_fn is not None:
+        u8 = artifact_fn(u8)
+    Image.fromarray(u8, mode="L").save(path)
+
+
+#: SeedSequence stream tags keeping per-chip artifact generators disjoint
+#: between target and background chips (and from the per-scene generator,
+#: which is spawned as ``[seed, scene_idx]`` — two entries, never four).
+_ART_STREAM_TARGET, _ART_STREAM_BG = 1, 2
+
+
+def _chip_artifact_fn(
+    seed: int, scene_idx: int, stream: int, k: int, artifact_aug: float
+) -> Callable[[np.ndarray], np.ndarray] | None:
+    """Label-safe artifact transform for one chip, or ``None``.
+
+    Selection (probability *artifact_aug*) and all artifact draws come from a
+    dedicated generator spawned as ``default_rng([seed, scene_idx, stream, k])``
+    — deterministic from the build seed and fully separate from the scene
+    generator, so enabling ``artifact_aug`` changes PIXELS ONLY: chip windows,
+    filenames and label files stay byte-identical to an ``artifact_aug=0.0``
+    build. Only :data:`LABEL_SAFE_ARTIFACTS` (heave banding, ping dropout,
+    resolution jitter) are applied: pitch stretch and roll shear move pixels,
+    which would desynchronize the already-written YOLO boxes (see
+    :mod:`sonar_core.synth.artifacts`).
+    """
+    if artifact_aug <= 0.0:
+        return None
+    art_rng = np.random.default_rng([seed, scene_idx, stream, k])
+    if art_rng.random() >= artifact_aug:
+        return None
+    return lambda u8: apply_artifacts(u8, art_rng, names=LABEL_SAFE_ARTIFACTS)
 
 
 def _write_data_yaml(out_dir: Path) -> Path:
@@ -415,6 +455,7 @@ def build_synthetic_dataset(
     min_box_px: float = 2.0,
     bg_min_finite: float = 0.5,
     bg_max_tries: int = 40,
+    artifact_aug: float = 0.0,
     targets_fn: Callable[[SceneConfig, np.random.Generator], list[SynthTarget]] | None = None,
     preprocess_config: dict[str, Any] | None = None,
 ) -> Path:
@@ -453,6 +494,14 @@ def build_synthetic_dataset(
     drops clipped label slivers; *bg_min_finite* rejects background windows
     that are mostly out-of-swath NaN; *n_samples* is the per-side slant sample
     count of every rendered scene.
+
+    *artifact_aug* applies the label-safe PS acquisition artifacts (heave
+    banding, ping dropout, resolution jitter — see
+    :mod:`sonar_core.synth.artifacts`) to that fraction of chips, driven by
+    per-chip generators spawned from the build seed (see
+    :func:`_chip_artifact_fn`): geometry, filenames and labels stay
+    byte-identical to an artifact-free build, only pixels change. The default
+    0.0 leaves the historical output byte-for-byte unchanged.
 
     Returns the path to the written ``data.yaml``.
     """
@@ -511,7 +560,11 @@ def build_synthetic_dataset(
             r_off, c_off, win_h, win_w = window
             lines = _labels_in_window(boxes[t.side], window, min_box_px)
             stem = f"s{scene_idx:03d}_{t.side}_t{k:02d}_r{r_off}_c{c_off}"
-            _write_chip(img[r_off : r_off + win_h, c_off : c_off + win_w], img_dir / f"{stem}.png")
+            _write_chip(
+                img[r_off : r_off + win_h, c_off : c_off + win_w],
+                img_dir / f"{stem}.png",
+                _chip_artifact_fn(seed, scene_idx, _ART_STREAM_TARGET, k, artifact_aug),
+            )
             (lbl_dir / f"{stem}.txt").write_text(
                 "\n".join(lines) + ("\n" if lines else ""), encoding="utf-8"
             )
@@ -531,7 +584,11 @@ def build_synthetic_dataset(
                 if float(np.isfinite(view).mean()) < bg_min_finite:
                     continue  # mostly out-of-swath fill: not a useful negative
                 stem = f"s{scene_idx:03d}_{side}_bg{b:02d}_r{r_off}_c{c_off}"
-                _write_chip(view, img_dir / f"{stem}.png")
+                _write_chip(
+                    view,
+                    img_dir / f"{stem}.png",
+                    _chip_artifact_fn(seed, scene_idx, _ART_STREAM_BG, b, artifact_aug),
+                )
                 (lbl_dir / f"{stem}.txt").write_text("", encoding="utf-8")
                 break
 

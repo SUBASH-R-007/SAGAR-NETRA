@@ -2,7 +2,7 @@
 
 Usage:
     python edge/export_onnx.py [--weights weights/detector.pt] [--imgsz 640]
-                               [--data path/to/data.yaml]
+                               [--data path/to/data.yaml] [--int8]
 
 Parity is verified two ways:
 1. Raw-output check (always): both models run the same synthetic tiles and
@@ -10,6 +10,12 @@ Parity is verified two ways:
 2. mAP parity (with ``--data``): ``ultralytics val`` runs on both the .pt and
    the .onnx; mAP50 must agree within 1 percentage point (the M8 acceptance
    bar). Printed honestly either way.
+
+``--int8`` additionally writes a dynamically weight-quantized model
+(``*_int8.onnx``) and runs the SAME probes against it. INT8 weights *will*
+deviate from FP32 in the raw check — that is the point of quantization, not a
+bug — so the honest acceptance number is the mAP delta on real data, printed
+as "INT8 cost" when ``--data`` is given.
 """
 
 from __future__ import annotations
@@ -52,16 +58,31 @@ def raw_parity(weights: Path, onnx_path: Path, imgsz: int, n_tiles: int = 4) -> 
     return worst
 
 
-def map_parity(weights: Path, onnx_path: Path, data_yaml: Path, imgsz: int) -> tuple[float, float]:
+def quantize_int8(onnx_path: Path) -> Path:
+    """Dynamic (weight-only) INT8 quantization: ``detector.onnx`` ->
+    ``detector_int8.onnx``. Weights are stored INT8 and dequantized per layer
+    at run time — no calibration dataset needed, and the file shrinks ~4x,
+    which is what matters for shipping to an edge box over a boat's uplink."""
+    from onnxruntime.quantization import QuantType, quantize_dynamic
+
+    int8_path = onnx_path.with_name(f"{onnx_path.stem}_int8.onnx")
+    quantize_dynamic(str(onnx_path), str(int8_path), weight_type=QuantType.QInt8)
+    return int8_path
+
+
+def val_map50(model_path: Path, data_yaml: Path, imgsz: int) -> float:
+    """mAP50 of one model (.pt or .onnx) via ``ultralytics val``."""
     from ultralytics import YOLO
 
     # rect=False: the .pt path would otherwise use rectangular val batches
     # while the static ONNX runs square inputs — an apples-to-oranges mAP.
     kwargs = dict(data=str(data_yaml), imgsz=imgsz, device="cpu", workers=0,
                   plots=False, verbose=False, rect=False)
-    map_pt = float(YOLO(str(weights)).val(**kwargs).box.map50)
-    map_onnx = float(YOLO(str(onnx_path)).val(**kwargs).box.map50)
-    return map_pt, map_onnx
+    return float(YOLO(str(model_path)).val(**kwargs).box.map50)
+
+
+def map_parity(weights: Path, onnx_path: Path, data_yaml: Path, imgsz: int) -> tuple[float, float]:
+    return val_map50(weights, data_yaml, imgsz), val_map50(onnx_path, data_yaml, imgsz)
 
 
 def main() -> None:
@@ -70,6 +91,8 @@ def main() -> None:
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument("--opset", type=int, default=12)
     parser.add_argument("--data", type=Path, default=None, help="data.yaml for mAP parity")
+    parser.add_argument("--int8", action="store_true",
+                        help="also write a dynamically weight-quantized *_int8.onnx")
     args = parser.parse_args()
 
     weights = args.weights
@@ -89,11 +112,27 @@ def main() -> None:
     if deviation > 1e-3:
         print("WARNING: raw outputs deviate more than 1e-3 — inspect the export")
 
+    int8_path = None
+    if args.int8:
+        int8_path = quantize_int8(onnx_path)
+        print(
+            f"quantized {int8_path} ({int8_path.stat().st_size / 1e6:.1f} MB, "
+            f"fp32 was {onnx_path.stat().st_size / 1e6:.1f} MB)"
+        )
+        int8_dev = raw_parity(weights, int8_path, args.imgsz)
+        print(f"INT8 raw-output max abs deviation vs PyTorch: {int8_dev:.2e} "
+              "(deviation is expected — INT8 trades exactness for size)")
+
     if args.data is not None and args.data.exists():
-        map_pt, map_onnx = map_parity(weights, onnx_path, args.data, args.imgsz)
+        map_pt = val_map50(weights, args.data, args.imgsz)
+        map_onnx = val_map50(onnx_path, args.data, args.imgsz)
         delta = abs(map_pt - map_onnx)
         print(f"mAP50  pytorch={map_pt:.4f}  onnx={map_onnx:.4f}  |delta|={delta:.4f}")
         print("PASS: within 1% mAP" if delta <= 0.01 else "FAIL: mAP parity outside 1%")
+        if int8_path is not None:
+            map_int8 = val_map50(int8_path, args.data, args.imgsz)
+            int8_cost = map_pt - map_int8
+            print(f"mAP50  int8={map_int8:.4f}  INT8 cost vs pytorch={int8_cost:+.4f}")
 
 
 if __name__ == "__main__":

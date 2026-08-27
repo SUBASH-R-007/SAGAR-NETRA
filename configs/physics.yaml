@@ -25,6 +25,17 @@ scoring:
   no_highlight_multiplier: 0.50  # box not brighter than local seabed: weak evidence
   no_shadow_multiplier: 0.75  # no measurable shadow: height unverifiable (may be flat/small)
   both_cues_bonus: 1.15       # highlight + plausible shadow: physics corroborates
+  # Stage-2 ML verifier (active only when weights/verifier.pkl exists):
+  # multiplier gains clip(verifier_floor + verifier_gain * P(debris), lo, hi),
+  # so P=0.75 is neutral (factor 1.0), P=0 demotes to 0.4, P=1 boosts to 1.2.
+  verifier_floor: 0.4         # factor at P(debris) = 0
+  verifier_gain: 0.8          # factor slope per unit probability
+  verifier_clip_lo: 0.4       # hard floor: the verifier may demote, never erase
+  verifier_clip_hi: 1.2       # hard cap: learned evidence cannot outrank physics
+  # Temporal persistence gate: a real object is ensonified by many consecutive
+  # pings; a 1-2 ping detection is characteristic of impulsive noise.
+  min_persistence_pings: 3    # minimum along-track extent (scan lines)
+  thin_persistence_multiplier: 0.6  # demotion for thinner detections (never deleted)
   shadow_analysis:            # kwargs forwarded to physicheck.shadow.analyze_shadow
     shadow_thresh: 0.5        # "dark" = below this fraction of local background
     min_dark_frac: 0.6        # fraction of rows dark for a column to count as shadow

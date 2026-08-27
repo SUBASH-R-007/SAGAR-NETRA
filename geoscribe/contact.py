@@ -8,13 +8,24 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 class ReviewStatus(StrEnum):
     pending = "pending"
     confirmed = "confirmed"
     rejected = "rejected"
+
+
+class RecoveryStatus(StrEnum):
+    """Physical recovery workflow: every contact starts ``flagged``; operations
+    assign a retrieval asset (``assigned``) and close the loop once the object
+    is on deck (``retrieved``). Orthogonal to :class:`ReviewStatus`, which
+    judges whether the *detection* is real."""
+
+    flagged = "flagged"
+    assigned = "assigned"
+    retrieved = "retrieved"
 
 
 class PixelRef(BaseModel):
@@ -85,12 +96,56 @@ class Contact(BaseModel):
     evidence_png: str | None = Field(default=None, description="Evidence Card image path")
     thumbnail_png: str | None = Field(default=None)
     review: ReviewStatus = ReviewStatus.pending
+    recovery: RecoveryStatus = Field(
+        default=RecoveryStatus.flagged,
+        description="recovery workflow state (flagged -> assigned -> retrieved); "
+        "the default keeps contacts stored before this field existed valid",
+    )
     notes: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
+    # -- strategy-PDF section 5.3 triage fields. Safe defaults throughout so
+    # contact JSON stored before this schema still validates unchanged.
+    priority: str = Field(
+        default="LOW",
+        pattern="^(HIGH|MEDIUM|LOW)$",
+        description=(
+            "operator triage priority derived from the severity bands "
+            "(HIGH >= 75, MEDIUM >= 50, else LOW); see geoscribe.report.priority_for"
+        ),
+    )
+    recommended_action: str | None = Field(
+        default=None,
+        description=(
+            "operator instruction from the (class, severity band) rule table; "
+            "see geoscribe.report.recommended_action_for"
+        ),
+    )
+    position_accuracy_m: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "honest position error budget: 2*ground_res + layback term + nav fix "
+            "term (see geoscribe.build.position_accuracy); 0.0 only in legacy "
+            "records written before the estimate existed"
+        ),
+    )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="[pixel.ping0, pixel.ping1] convenience alias in the JSON dump"
+    )
+    @property
+    def ping_range(self) -> tuple[int, int]:
+        return (self.pixel.ping0, self.pixel.ping1)
 
 
 def contacts_json_schema() -> dict[str, Any]:
-    """Published JSON Schema for a contacts.json document."""
+    """Published JSON Schema for a contacts.json document.
+
+    Contact items derive from the model in *serialization* mode so computed
+    conveniences (``ping_range``) are documented alongside stored fields. The
+    ``summary`` block is optional: documents written before schema 5.3 (and
+    fast preview passes without survey stats) must keep validating.
+    """
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "SAGAR-NETRA contacts report",
@@ -100,6 +155,30 @@ def contacts_json_schema() -> dict[str, Any]:
             "survey": {"type": "string"},
             "generated_at": {"type": "string"},
             "pipeline_version": {"type": "string"},
-            "contacts": {"type": "array", "items": Contact.model_json_schema()},
+            "summary": {
+                "type": "object",
+                "description": "survey-level roll-up (strategy-PDF section 5.3)",
+                "properties": {
+                    "total_detections": {"type": "integer"},
+                    "high_confidence": {
+                        "type": "integer",
+                        "description": "contacts at or above 70% calibrated confidence",
+                    },
+                    "area_surveyed_sqkm": {"type": ["number", "null"]},
+                    "debris_density_per_sqkm": {"type": ["number", "null"]},
+                    "sonar_config": {
+                        "type": ["object", "null"],
+                        "properties": {
+                            "range_m": {"type": ["number", "null"]},
+                            "altitude_m": {"type": ["number", "null"]},
+                            "n_pings": {"type": "integer"},
+                        },
+                    },
+                },
+            },
+            "contacts": {
+                "type": "array",
+                "items": Contact.model_json_schema(mode="serialization"),
+            },
         },
     }

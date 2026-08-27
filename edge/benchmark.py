@@ -6,7 +6,8 @@ Usage:
 
 Measures, honestly, on this hardware:
 - L1 preprocessing throughput (pings/s) on a synthetic survey
-- Detector latency/FPS: PyTorch CPU and ONNX Runtime (if an export exists)
+- Detector latency/FPS: PyTorch CPU and ONNX Runtime (if an export exists),
+  plus the INT8-quantized ONNX (if edge/export_onnx.py --int8 has been run)
 - Anomaly autoencoder latency (if weights exist)
 """
 
@@ -112,10 +113,15 @@ def main() -> None:
     if not weights.exists() and (REPO_ROOT / "weights" / "detector_smoke.pt").exists():
         weights = REPO_ROOT / "weights" / "detector_smoke.pt"
 
+    onnx_path = weights.with_suffix(".onnx")
     results = {
         "preprocess": bench_preprocess(),
         "torch": bench_torch(weights, args.imgsz, args.tiles),
-        "onnx": bench_onnx(weights.with_suffix(".onnx"), args.imgsz, args.tiles),
+        "onnx": bench_onnx(onnx_path, args.imgsz, args.tiles),
+        # Written by edge/export_onnx.py --int8; same naming convention.
+        "onnx_int8": bench_onnx(
+            onnx_path.with_name(f"{onnx_path.stem}_int8.onnx"), args.imgsz, args.tiles
+        ),
         "anomaly": bench_anomaly(REPO_ROOT / "weights" / "anomaly.pt", 512, 8),
     }
 
@@ -134,7 +140,7 @@ def main() -> None:
         f"{results['preprocess']['seconds']} s -> {results['preprocess']['n_tiles']} tiles |",
     ]
     for key, label in (("torch", "Detector (PyTorch CPU)"), ("onnx", "Detector (ONNX RT CPU)"),
-                       ("anomaly", "Anomaly AE (CPU)")):
+                       ("onnx_int8", "Detector (ONNX INT8 CPU)"), ("anomaly", "Anomaly AE (CPU)")):
         r = results[key]
         if r is None:
             lines.append(f"| {label} | — | not available (no weights/export) |")

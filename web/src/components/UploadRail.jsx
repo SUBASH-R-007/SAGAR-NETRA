@@ -10,6 +10,7 @@ const ACCEPT = '.xtf,.jsf,.tif,.tiff,.png,.jpg,.jpeg,.sl2,.sl3,.zip'
 export default function UploadRail({ onJobDone, pushToast }) {
   const [jobs, setJobs] = useState([])
   const [drag, setDrag] = useState(false)
+  const [mode, setMode] = useState('batch') // 'batch' | 'stream' (live replay)
   const fileRef = useRef(null)
   const finishedRef = useRef(new Set())
 
@@ -117,15 +118,20 @@ export default function UploadRail({ onJobDone, pushToast }) {
       const file = files && files[0]
       if (!file) return
       try {
-        const { job_id: jobId } = await uploadFile(file)
-        pushToast(`Uploaded ${file.name} — processing started`, 'ok')
-        upsert({ id: jobId, status: 'queued', stage: 'queued', fraction: 0, message: file.name })
+        const { job_id: jobId } = await uploadFile(file, mode)
+        pushToast(
+          `Uploaded ${file.name} — ${mode === 'stream' ? 'live stream' : 'processing'} started`,
+          'ok',
+        )
+        upsert({
+          id: jobId, status: 'queued', stage: 'queued', fraction: 0, message: file.name, mode,
+        })
         track(jobId)
       } catch (err) {
         pushToast(`Upload failed: ${err.message}`, 'error')
       }
     },
-    [pushToast, track, upsert],
+    [mode, pushToast, track, upsert],
   )
 
   const pct = (j) => Math.round((j.fraction || 0) * 100)
@@ -173,6 +179,21 @@ export default function UploadRail({ onJobDone, pushToast }) {
             }}
           />
         </div>
+        <div className="mode-toggle mono" role="radiogroup" aria-label="processing mode">
+          {['batch', 'stream'].map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="radio"
+              aria-checked={mode === m}
+              className={mode === m ? 'mode-btn active' : 'mode-btn'}
+              onClick={() => setMode(m)}
+              title={m === 'stream' ? 'replay as a live towed stream' : 'one-shot processing'}
+            >
+              {m === 'stream' ? 'LIVE STREAM' : 'BATCH'}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="rail-section grow">
@@ -188,6 +209,7 @@ export default function UploadRail({ onJobDone, pushToast }) {
                 <span className="job-name mono" title={j.id}>
                   {j.survey || j.name || j.filename || j.message || j.id}
                 </span>
+                {j.mode === 'stream' && <span className="pill pill-stream">live</span>}
                 <span className={`pill pill-${j.status}`}>{j.status}</span>
               </div>
               {(j.status === 'running' || j.status === 'queued') && (
@@ -209,6 +231,20 @@ export default function UploadRail({ onJobDone, pushToast }) {
               )}
               {j.status === 'error' && (
                 <div className="job-sub err-text">{j.error || j.message || 'failed'}</div>
+              )}
+              {j.mode === 'stream' && (j.recent_events || []).some((e) => e.type === 'contact') && (
+                <div className="live-feed">
+                  {(j.recent_events || [])
+                    .filter((e) => e.type === 'contact')
+                    .slice(-5)
+                    .map((e) => (
+                      <div key={e.contact.id} className="live-row mono">
+                        <span className="live-id">{e.contact.id}</span>
+                        <span className="live-cls">{e.contact.cls}</span>
+                        <span className="live-conf">{Math.round(e.contact.confidence)}%</span>
+                      </div>
+                    ))}
+                </div>
               )}
             </div>
           ))}

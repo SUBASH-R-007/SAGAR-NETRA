@@ -15,7 +15,7 @@ import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
-from geoscribe.contact import Contact, ReviewStatus
+from geoscribe.contact import Contact, RecoveryStatus, ReviewStatus
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS contacts (
@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS surveys (
     n_pings INTEGER,
     n_contacts INTEGER,
     outputs_dir TEXT
+);
+CREATE TABLE IF NOT EXISTS recovery_log (
+    contact_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    at TEXT NOT NULL
 );
 """
 
@@ -123,6 +128,33 @@ class ContactRepo:
             self._conn.commit()
         return updated
 
+    def set_recovery(self, contact_id: str, status: RecoveryStatus) -> Contact | None:
+        """Advance the physical recovery workflow (flagged -> assigned -> retrieved).
+
+        Mirrors :meth:`set_review`: the contact JSON is updated in place and an
+        append-only ``recovery_log`` row records who-retrieved-what-when for the
+        operations audit trail. The table is created by ``_SCHEMA`` with IF NOT
+        EXISTS, so existing databases pick it up with no migration.
+        """
+        contact = self.get(contact_id)
+        if contact is None:
+            return None
+        updated = contact.model_copy(update={"recovery": status})
+        with self._lock:
+            self._conn.execute(
+                "UPDATE contacts SET json = ? WHERE id = ?",
+                (updated.model_dump_json(), contact_id),
+            )
+            self._conn.execute(
+                "INSERT INTO recovery_log VALUES (?,?,?)",
+                (
+                    contact_id, status.value,
+                    datetime.now(tz=UTC).isoformat(timespec="seconds"),
+                ),
+            )
+            self._conn.commit()
+        return updated
+
     def delete_survey(self, name: str) -> int:
         with self._lock:
             cur = self._conn.execute("DELETE FROM contacts WHERE survey = ?", (name,))
@@ -182,6 +214,15 @@ class ContactRepo:
         """Append-only review trail — the future retraining label export."""
         with self._lock:
             rows = self._conn.execute("SELECT * FROM reviews ORDER BY at").fetchall()
+        return [dict(r) for r in rows]
+
+    def recovery_log(self) -> list[dict]:
+        """Append-only recovery audit trail, oldest first (rowid breaks
+        same-second timestamp ties so the workflow order is never ambiguous)."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT contact_id, status, at FROM recovery_log ORDER BY at, rowid"
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def run_sql(self, sql: str, params: tuple = ()) -> list[dict]:

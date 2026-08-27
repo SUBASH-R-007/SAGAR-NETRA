@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react'
-import { evidenceUrl, postReview, reportUrl, thumbUrl } from '../api'
+import { evidenceUrl, postRecovery, postReview, reportUrl, thumbUrl } from '../api'
 import { fmtDims, fmtMeters } from '../utils'
 import EmptyState from './EmptyState'
 import PhysicsBadges from './PhysicsBadges'
@@ -13,6 +13,8 @@ const SORTS = {
 }
 const REPORT_FMTS = ['json', 'csv', 'geojson', 'kml', 'pdf']
 const BREAKDOWN_KEYS = ['hazard', 'size', 'height', 'depth', 'proximity']
+// Recovery workflow ring: flagged -> assigned -> retrieved (-> flagged to undo).
+const NEXT_RECOVERY = { flagged: 'assigned', assigned: 'retrieved', retrieved: 'flagged' }
 
 function BreakdownBars({ breakdown }) {
   const b = breakdown || {}
@@ -82,6 +84,19 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
     }
   }
 
+  const cycleRecovery = async (c) => {
+    const status = NEXT_RECOVERY[c.recovery] || 'assigned'
+    setBusyId(c.id)
+    try {
+      onReview(await postRecovery(c.id, status))
+      pushToast(`${c.id} recovery → ${status}`, 'ok')
+    } catch (err) {
+      pushToast(`Recovery update failed: ${err.message}`, 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (!survey) {
     return (
       <EmptyState
@@ -135,6 +150,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                 <th className="num">Depth</th>
                 <th>Physics</th>
                 <th>Review</th>
+                <th>Recovery</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -173,6 +189,20 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                     <td>
                       <span className={`rv rv-${c.review}`}>{c.review}</span>
                     </td>
+                    <td className="recovery-cell">
+                      <span className={`rc rc-${c.recovery || 'flagged'}`}>
+                        {c.recovery || 'flagged'}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn small"
+                        disabled={busyId === c.id}
+                        title={`advance to ${NEXT_RECOVERY[c.recovery] || 'assigned'}`}
+                        onClick={() => cycleRecovery(c)}
+                      >
+                        ⟳
+                      </button>
+                    </td>
                     <td className="actions-cell">
                       <button
                         type="button"
@@ -202,7 +232,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                   </tr>
                   {expandedId === c.id && (
                     <tr className="expand-row">
-                      <td colSpan={10}>
+                      <td colSpan={11}>
                         <BreakdownBars breakdown={c.severity_breakdown} />
                       </td>
                     </tr>

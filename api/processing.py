@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 
 from api.db import ContactRepo
-from geoscribe.build import build_contacts
+from geoscribe.build import build_contacts, survey_stats
 from geoscribe.report import write_all
 from geoscribe.severity import Layer, load_layers, load_mission
 from physicheck.calibrate import PhysicsGate
@@ -196,7 +196,7 @@ def process_survey(
         hazard_table=hazard_table,
     )
     stage(frac=0.5)
-    report_paths = write_all(contacts, out_dir, survey=survey)
+    report_paths = write_all(contacts, out_dir, survey=survey, survey_stats=survey_stats(pre))
     meta = _write_waterfall_assets(pre, out_dir)
     stage(frac=0.9)
 

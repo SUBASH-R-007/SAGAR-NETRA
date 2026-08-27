@@ -1,0 +1,8 @@
+# GeoScribe reporting configuration (strategy-PDF section 5.3).
+#
+# Position accuracy is an error *budget*, not a statistical fit: terms add
+# linearly because each is a bias, and a recovery diver wants the
+# conservative number. See geoscribe.build.position_accuracy for the formula.
+
+position_accuracy:
+  nav_fix_uncertainty_m: 2.0   # surface GPS antenna horizontal fix error (typical DGPS)

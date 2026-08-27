@@ -50,11 +50,17 @@ export const fetchDiff = (surveyA, surveyB, radiusM) =>
 export const postReview = (contactId, status, notes = null) =>
   postJSON(`/api/contacts/${encodeURIComponent(contactId)}/review`, { status, notes })
 
+export const postRecovery = (contactId, status) =>
+  postJSON(`/api/contacts/${encodeURIComponent(contactId)}/recovery`, { status })
+
 export const askCopilot = (question) => postJSON('/api/copilot', { question })
 
-export async function uploadFile(file) {
+// mode: 'batch' (default one-shot processing) or 'stream' (towed real-time
+// replay — the job snapshot then carries a recent_events detections feed).
+export async function uploadFile(file, mode = 'batch') {
   const form = new FormData()
   form.append('file', file)
+  form.append('mode', mode)
   return fetch('/api/upload', { method: 'POST', body: form }).then(handle)
 }
 
