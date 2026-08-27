@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Data & models (large artifacts stay out of git)
+data/raw/
+data/datasets/
+data/uploads/
+data/tile_cache/
+data/contacts.db
+data/segmenter_synth/
+data/segmenter_synth_smoke/
+edge/calib/
+runs/
+weights/
+*.pt
+*.onnx
+*.engine
+
+# Web
+web/node_modules/
+web/dist/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Outputs
+outputs/
+*.log

@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "name": "turtle_nesting_zone",
+  "description": "DEMO geometry — olive ridley nesting buffer, Chennai coast (illustrative)",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Olive Ridley Nesting Buffer (demo)", "kind": "turtle_zone" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [80.330, 13.070],
+          [80.370, 13.062],
+          [80.372, 13.035],
+          [80.332, 13.043],
+          [80.330, 13.070]
+        ]]
+      }
+    }
+  ]
+}

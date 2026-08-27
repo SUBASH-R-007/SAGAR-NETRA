@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "name": "shipping_lane",
+  "description": "DEMO geometry — Chennai port approach corridor (illustrative, not for navigation)",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "Chennai Port Approach Lane (demo)", "kind": "shipping_lane" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [80.310, 13.115],
+          [80.420, 13.090],
+          [80.430, 13.060],
+          [80.320, 13.085],
+          [80.310, 13.115]
+        ]]
+      }
+    }
+  ]
+}

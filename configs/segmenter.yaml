@@ -1,0 +1,11 @@
+# TridentNet Brain B — U-Net net/rope segmentation.
+# Mirrors tridentnet.segmenter.DEFAULTS; omitted keys keep code defaults.
+
+base_channels: 16     # first encoder width; doubles per stage (4 stages -> 128, bottleneck 256)
+epochs: 20            # training passes over the mask-chip set
+lr: 0.001             # Adam learning rate
+batch: 8              # chips per step
+threshold: 0.5        # sigmoid cut turning probabilities into mask pixels
+dice_eps: 1.0         # soft-Dice smoothing (keeps empty-mask chips well-defined)
+refine_margin_px: 4   # box expansion (pixels) when intersecting a mask with a detection
+min_mask_frac: 0.05   # min mask fraction inside a box for the refinement to be trusted

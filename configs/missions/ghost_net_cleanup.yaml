@@ -1,0 +1,28 @@
+# Mission profile: ghost-net recovery sweep (blueprint N-12).
+#
+# hazard_overrides are merged over geoscribe.severity.DEFAULT_HAZARD, so any
+# class not listed keeps its default weight. human_body is never demoted in
+# any profile: a possible victim outranks every mission priority.
+description: >-
+  Ghost-net recovery sweep: rank entangling fishing gear first. Nets snag on
+  wrecks and drift into piles, so wrecks stay elevated as likely snag points
+  while inert debris (tires, drums) drops down the queue.
+
+hazard_overrides:
+  ghost_net: 1.0        # the mission target — always at the top
+  wreck: 0.75           # nets snag on wreckage; likely recovery site
+  container: 0.55
+  cylinder_drum: 0.55
+  tire: 0.40            # inert, low entanglement contribution
+  pipeline: 0.35        # fixed infrastructure, not recoverable gear
+  aircraft: 0.40
+  unknown_anomaly: 0.70 # an unclassified pile is often a net candidate
+
+# Detector confidence threshold for this mission (tridentnet config "conf").
+# Nets are low-reflectivity irregular piles, so a mildly lowered threshold
+# trades a few extra reviews for fewer missed nets.
+detector_conf: 0.20
+
+reportable_extra_note: >-
+  Ghost-net cleanup profile active: severity ranking emphasises entangling
+  gear. Verify net contacts with a drop camera before grapnel recovery.

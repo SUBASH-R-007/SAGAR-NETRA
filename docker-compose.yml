@@ -1,0 +1,38 @@
+# SAGAR-NETRA — one-command deployment.
+#
+#   docker compose up --build          # API + dashboard on http://localhost:8000
+#   docker compose --profile postgis up  # adds a PostGIS for shore stations
+#
+# The default path is fully self-contained (SQLite storage, offline tile
+# cache); PostGIS is an optional profile for multi-user shore deployments.
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./weights:/app/weights
+      - ./data/uploads:/app/data/uploads
+      - ./data/tile_cache:/app/data/tile_cache
+      - ./outputs:/app/outputs
+      - sagar-db:/app/data/db
+    environment:
+      - SAGAR_LLM_ENDPOINT=${SAGAR_LLM_ENDPOINT:-}
+    restart: unless-stopped
+
+  postgis:
+    image: postgis/postgis:16-3.4
+    profiles: ["postgis"]
+    environment:
+      - POSTGRES_DB=sagar_netra
+      - POSTGRES_USER=sagar
+      - POSTGRES_PASSWORD=netra
+    ports:
+      - "5432:5432"
+    volumes:
+      - sagar-pg:/var/lib/postgresql/data
+
+volumes:
+  sagar-db:
+  sagar-pg:

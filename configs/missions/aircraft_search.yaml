@@ -1,0 +1,27 @@
+# Mission profile: downed-aircraft search (blueprint N-12).
+#
+# hazard_overrides are merged over geoscribe.severity.DEFAULT_HAZARD; unlisted
+# classes keep their defaults (human_body 1.0 stays in force).
+description: >-
+  Downed-aircraft search: airframe and wreckage field first. An impact breaks
+  an airframe into a debris trail, so wrecks and unclassified anomalies stay
+  high as probable fragments while common sea debris is demoted.
+
+hazard_overrides:
+  aircraft: 1.0         # the mission target
+  wreck: 0.90           # large fragments classify as generic wreckage
+  unknown_anomaly: 0.85 # torn structure rarely matches a trained class
+  container: 0.35
+  cylinder_drum: 0.30
+  ghost_net: 0.30
+  pipeline: 0.20
+  tire: 0.15
+
+# Fragments present as small, broken-edged returns; a lowered threshold keeps
+# faint debris-trail pieces that seed the back-plot toward the main wreckage.
+detector_conf: 0.15
+
+reportable_extra_note: >-
+  Aircraft search profile active: severity ranking emphasises airframe and
+  wreckage-trail returns. Plot contact bearings for a debris-trail vector and
+  preserve positions for accident investigators.

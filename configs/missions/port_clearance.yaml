@@ -1,0 +1,26 @@
+# Mission profile: port and harbour clearance (blueprint N-12).
+#
+# hazard_overrides are merged over geoscribe.severity.DEFAULT_HAZARD; unlisted
+# classes keep their defaults (human_body 1.0, mine_like 0.95 stay in force).
+description: >-
+  Port clearance survey: navigation hazards first. Containers, wrecks and
+  pipeline exposures obstruct berths and channels and threaten hulls at
+  harbour depths, so they are boosted above soft debris.
+
+hazard_overrides:
+  container: 1.0        # lost boxes are the classic channel obstruction
+  wreck: 0.95           # hull-height obstruction, dredging blocker
+  pipeline: 0.90        # exposed/dragged pipe: anchor and dredge strike risk
+  cylinder_drum: 0.80   # possible hazmat in an enclosed basin
+  mine_like: 1.0        # UXO inside a port perimeter is an immediate stop
+  tire: 0.25            # fender losses are ubiquitous and benign
+  ghost_net: 0.60       # fouls propellers but rarely closes a berth
+
+# Port surveys run at short range with strong returns; the default threshold
+# already balances precision/recall there.
+detector_conf: 0.25
+
+reportable_extra_note: >-
+  Port clearance profile active: severity ranking emphasises navigation and
+  dredging hazards. Cross-check container/wreck contacts against the harbour
+  master's charted obstruction list before tasking divers.

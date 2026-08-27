@@ -1,0 +1,48 @@
+# PhysiCheck configuration: per-class height plausibility and confidence scoring.
+#
+# Heights are metres proud of the seabed, estimated from acoustic shadow length
+# (H = L*A/R). A class whose estimated height falls outside its band is
+# physically implausible (e.g. a 5 m "tire") and gets demoted, not deleted —
+# the operator still sees it, ranked honestly.
+
+plausibility:
+  ghost_net:     {min_height_m: 0.0, max_height_m: 2.5}   # net piles lie low
+  wreck:         {min_height_m: 0.5, max_height_m: 15.0}
+  aircraft:      {min_height_m: 0.5, max_height_m: 8.0}
+  pipeline:      {min_height_m: 0.1, max_height_m: 1.5}
+  cylinder_drum: {min_height_m: 0.2, max_height_m: 1.5}
+  tire:          {min_height_m: 0.0, max_height_m: 1.2}
+  container:     {min_height_m: 1.0, max_height_m: 3.0}
+  human_body:    {min_height_m: 0.0, max_height_m: 0.6}
+  mine_like:     {min_height_m: 0.2, max_height_m: 1.2}
+  rock_cluster:  {min_height_m: 0.0, max_height_m: 5.0}
+  sand_ripple:   {min_height_m: 0.0, max_height_m: 0.6}
+  reef:          {min_height_m: 0.0, max_height_m: 10.0}
+
+scoring:
+  temperature: 2.544            # overwritten by scripts/fit_calibration.py output
+  violation_multiplier: 0.40  # height outside the class band
+  no_highlight_multiplier: 0.50  # box not brighter than local seabed: weak evidence
+  no_shadow_multiplier: 0.75  # no measurable shadow: height unverifiable (may be flat/small)
+  both_cues_bonus: 1.15       # highlight + plausible shadow: physics corroborates
+  # Stage-2 ML verifier (active only when weights/verifier.pkl exists):
+  # multiplier gains clip(verifier_floor + verifier_gain * P(debris), lo, hi),
+  # so P=0.75 is neutral (factor 1.0), P=0 demotes to 0.4, P=1 boosts to 1.2.
+  verifier_floor: 0.4         # factor at P(debris) = 0
+  verifier_gain: 0.8          # factor slope per unit probability
+  verifier_clip_lo: 0.4       # hard floor: the verifier may demote, never erase
+  verifier_clip_hi: 1.2       # hard cap: learned evidence cannot outrank physics
+  # Temporal persistence gate: a real object is ensonified by many consecutive
+  # pings; a 1-2 ping detection is characteristic of impulsive noise.
+  min_persistence_pings: 3    # minimum along-track extent (scan lines)
+  thin_persistence_multiplier: 0.6  # demotion for thinner detections (never deleted)
+  shadow_analysis:            # kwargs forwarded to physicheck.shadow.analyze_shadow
+    shadow_thresh: 0.5        # "dark" = below this fraction of local background
+    min_dark_frac: 0.6        # fraction of rows dark for a column to count as shadow
+    highlight_min_ratio: 1.4  # box median / background to accept a highlight
+    max_height_m: 20.0        # sizes the down-range shadow search window
+    bg_width_cols: 40         # background reference strip width (columns)
+    bg_gap_cols: 4            # gap between box edge and background strip (columns)
+    tolerance_cols: 2         # bright interruptions allowed inside a shadow run
+    lead_in_cols: 4           # columns after the box edge where the shadow may begin
+    core_frac: 0.6            # central fraction of box rows used for shadow statistics

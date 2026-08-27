@@ -1,0 +1,42 @@
+# SAGAR-NETRA M2 preprocessing configuration.
+#
+# This file mirrors sonar_core.preprocess.pipeline.DEFAULTS line for line and
+# is deep-merged over it: omit any key to keep the code default, override only
+# what you tune. Stage order is fixed by the physics (see pipeline.py):
+#   track_bottom -> egn (slant domain) -> blank_water_column -> slant_to_ground
+#   -> despeckle -> clahe -> tile
+
+bottom_track:
+  noise_factor: 4.0   # first-return threshold, multiple of the water-column noise level (unitless)
+  min_run: 3          # consecutive samples that must stay above threshold to accept a return (samples)
+  smooth_pings: 15    # median window for the outlier-rejection reference track (pings)
+  max_dev_m: 1.5      # reject first returns deviating more than this from the reference (metres)
+
+egn:
+  enabled: true       # empirical gain normalization of residual TVG banding
+  n_bins: 256         # range bins pooled for the per-range median gain estimate (bins)
+  eps_frac: 0.01      # dead-bin gain clamp floor, fraction of the median gain (unitless)
+  nadir_guard: 8      # samples after the first return excluded from gain STATS (bottom-return transient)
+
+water_column:
+  fill: 0.0           # intensity written over pre-bottom (water-column) samples (raw counts)
+
+slant_range:
+  ground_res: null    # output metres per column; null -> finest side's slant resolution (m)
+
+despeckle:
+  enabled: true       # edge-preserving speckle reduction before contrast enhancement
+  method: lee         # "lee" (MMSE multiplicative-noise filter) or "median" (impulse-only)
+  size: 5             # filter window side (pixels); keep 5-7 to protect thin shadows
+
+clahe:
+  enabled: true       # contrast-limited adaptive histogram equalization for display/detector
+  clip_limit: 2.5     # per-tile histogram slope cap, relative to a uniform histogram (unitless)
+  tile_grid: [8, 8]   # [tiles across range, tiles along track] (tiles)
+  p_low: 1.0          # percentile of finite pixels mapped to black before CLAHE (%)
+  p_high: 99.7        # percentile mapped to white; asymmetric to clip only specular flashes (%)
+
+tiler:
+  tile_size: 512      # detector chip side (pixels)
+  overlap: 0.25       # tile overlap fraction (0-1); small debris is never split by every boundary
+  min_content: 0.0    # minimum finite-pixel fraction to keep a tile (0 = lossless coverage)
