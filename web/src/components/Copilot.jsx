@@ -51,7 +51,8 @@ export default function Copilot({ pushToast }) {
   const endRef = useRef(null)
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    endRef.current?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'end' })
   }, [log, busy])
 
   const ask = async (question) => {
@@ -79,9 +80,7 @@ export default function Copilot({ pushToast }) {
       <div className="copilot-log">
         {log.length === 0 && (
           <div className="copilot-hello">
-            <div className="empty-icon" aria-hidden="true">
-              ⌁
-            </div>
+            <div className="empty-eyebrow">Survey Copilot</div>
             <p>
               Ask the survey copilot about detected contacts — it answers from the contact
               database and shows its SQL.
@@ -90,7 +89,7 @@ export default function Copilot({ pushToast }) {
         )}
         {log.map((entry, i) => (
           <div key={i} className={`msg msg-${entry.role}${entry.error ? ' msg-error' : ''}`}>
-            <div className="msg-role mono">{entry.role === 'user' ? 'YOU' : 'COPILOT'}</div>
+            <div className="msg-role">{entry.role === 'user' ? 'YOU' : 'COPILOT'}</div>
             <div className="msg-text">{entry.text}</div>
             {entry.sql && (
               <pre className="msg-sql">
@@ -102,7 +101,7 @@ export default function Copilot({ pushToast }) {
         ))}
         {busy && (
           <div className="msg msg-bot">
-            <div className="msg-role mono">COPILOT</div>
+            <div className="msg-role">COPILOT</div>
             <div className="msg-text muted">thinking…</div>
           </div>
         )}

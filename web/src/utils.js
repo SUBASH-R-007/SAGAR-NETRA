@@ -1,17 +1,18 @@
 // Shared formatting + severity-band helpers.
 
+// Hex values mirror the --sev-* tokens in styles.css (DESIGN.md ramp).
 export function sevColor(sev) {
-  if (sev >= 75) return '#ff3b30'
-  if (sev >= 50) return '#ff9500'
-  if (sev >= 25) return '#ffcc00'
-  return '#34c759'
+  if (sev >= 75) return '#BC3116'
+  if (sev >= 50) return '#C67102'
+  if (sev >= 25) return '#A08C00'
+  return '#3E7D52'
 }
 
 export const SEVERITY_BANDS = [
-  { label: 'critical  ≥75', color: '#ff3b30' },
-  { label: 'high  50–74', color: '#ff9500' },
-  { label: 'moderate  25–49', color: '#ffcc00' },
-  { label: 'low  <25', color: '#34c759' },
+  { label: 'critical  ≥75', color: '#BC3116' },
+  { label: 'high  50–74', color: '#C67102' },
+  { label: 'moderate  25–49', color: '#A08C00' },
+  { label: 'low  <25', color: '#3E7D52' },
 ]
 
 export function fmtDims(d) {

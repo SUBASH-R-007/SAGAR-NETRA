@@ -70,13 +70,20 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
     }
   }
 
-  const arrow = (key) => (key === sortKey ? (dir === 1 ? ' ▲' : ' ▼') : '')
+  // Drawn sort indicator — a CSS triangle, no glyphs.
+  const sortMark = (key) =>
+    key === sortKey ? (
+      <span className={dir === 1 ? 'sort-tri asc' : 'sort-tri desc'} aria-hidden="true" />
+    ) : null
+
+  const ariaSort = (key) =>
+    key === sortKey ? (dir === 1 ? 'ascending' : 'descending') : undefined
 
   const review = async (c, status) => {
     setBusyId(c.id)
     try {
       onReview(await postReview(c.id, status))
-      pushToast(`${c.id} → ${status}`, 'ok')
+      pushToast(`${c.id} marked ${status}`, 'ok')
     } catch (err) {
       pushToast(`Review failed: ${err.message}`, 'error')
     } finally {
@@ -89,7 +96,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
     setBusyId(c.id)
     try {
       onReview(await postRecovery(c.id, status))
-      pushToast(`${c.id} recovery → ${status}`, 'ok')
+      pushToast(`${c.id} recovery set to ${status}`, 'ok')
     } catch (err) {
       pushToast(`Recovery update failed: ${err.message}`, 'error')
     } finally {
@@ -133,18 +140,26 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
           <table className="contacts-table">
             <thead>
               <tr>
-                <th className="sortable" onClick={() => clickSort('id')}>
-                  ID{arrow('id')}
+                <th className="sortable" aria-sort={ariaSort('id')}>
+                  <button type="button" className="cell-btn" onClick={() => clickSort('id')}>
+                    ID{sortMark('id')}
+                  </button>
                 </th>
                 <th>Thumb</th>
-                <th className="sortable" onClick={() => clickSort('class')}>
-                  Class{arrow('class')}
+                <th className="sortable" aria-sort={ariaSort('class')}>
+                  <button type="button" className="cell-btn" onClick={() => clickSort('class')}>
+                    Class{sortMark('class')}
+                  </button>
                 </th>
-                <th className="sortable num" onClick={() => clickSort('confidence')}>
-                  Conf{arrow('confidence')}
+                <th className="sortable num" aria-sort={ariaSort('confidence')}>
+                  <button type="button" className="cell-btn" onClick={() => clickSort('confidence')}>
+                    Conf{sortMark('confidence')}
+                  </button>
                 </th>
-                <th className="sortable num" onClick={() => clickSort('severity')}>
-                  Sev{arrow('severity')}
+                <th className="sortable num" aria-sort={ariaSort('severity')}>
+                  <button type="button" className="cell-btn" onClick={() => clickSort('severity')}>
+                    Sev{sortMark('severity')}
+                  </button>
                 </th>
                 <th>Dims L×W×H</th>
                 <th className="num">Depth</th>
@@ -158,12 +173,20 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
               {sorted.map((c) => (
                 <Fragment key={c.id}>
                   <tr className={expandedId === c.id ? 'row expanded' : 'row'}>
-                    <td
-                      className="mono id-cell"
-                      onClick={() => setExpandedId((cur) => (cur === c.id ? null : c.id))}
-                      title="toggle severity breakdown"
-                    >
-                      <span className="chev">{expandedId === c.id ? '▾' : '▸'}</span> {c.id}
+                    <td className="mono id-cell">
+                      <button
+                        type="button"
+                        className="cell-btn"
+                        aria-expanded={expandedId === c.id}
+                        title="toggle severity breakdown"
+                        onClick={() => setExpandedId((cur) => (cur === c.id ? null : c.id))}
+                      >
+                        <span
+                          className={expandedId === c.id ? 'tri open' : 'tri'}
+                          aria-hidden="true"
+                        />
+                        {c.id}
+                      </button>
                     </td>
                     <td>
                       <img
@@ -190,44 +213,48 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                       <span className={`rv rv-${c.review}`}>{c.review}</span>
                     </td>
                     <td className="recovery-cell">
-                      <span className={`rc rc-${c.recovery || 'flagged'}`}>
-                        {c.recovery || 'flagged'}
-                      </span>
-                      <button
-                        type="button"
-                        className="btn small"
-                        disabled={busyId === c.id}
-                        title={`advance to ${NEXT_RECOVERY[c.recovery] || 'assigned'}`}
-                        onClick={() => cycleRecovery(c)}
-                      >
-                        ⟳
-                      </button>
+                      <div className="row-actions">
+                        <span className={`rc rc-${c.recovery || 'flagged'}`}>
+                          {c.recovery || 'flagged'}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn small"
+                          disabled={busyId === c.id}
+                          title={`advance to ${NEXT_RECOVERY[c.recovery] || 'assigned'}`}
+                          onClick={() => cycleRecovery(c)}
+                        >
+                          Advance
+                        </button>
+                      </div>
                     </td>
                     <td className="actions-cell">
-                      <button
-                        type="button"
-                        className="btn ok small"
-                        disabled={busyId === c.id || c.review === 'confirmed'}
-                        onClick={() => review(c, 'confirmed')}
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        type="button"
-                        className="btn danger small"
-                        disabled={busyId === c.id || c.review === 'rejected'}
-                        onClick={() => review(c, 'rejected')}
-                      >
-                        Reject
-                      </button>
-                      <a
-                        className="btn link small"
-                        href={evidenceUrl(c.id)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Evidence
-                      </a>
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="btn ok small"
+                          disabled={busyId === c.id || c.review === 'confirmed'}
+                          onClick={() => review(c, 'confirmed')}
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          type="button"
+                          className="btn danger small"
+                          disabled={busyId === c.id || c.review === 'rejected'}
+                          onClick={() => review(c, 'rejected')}
+                        >
+                          Reject
+                        </button>
+                        <a
+                          className="btn link small"
+                          href={evidenceUrl(c.id)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Evidence
+                        </a>
+                      </div>
                     </td>
                   </tr>
                   {expandedId === c.id && (

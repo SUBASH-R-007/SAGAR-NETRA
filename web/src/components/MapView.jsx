@@ -9,7 +9,9 @@ import EmptyState from './EmptyState'
 import MapResize from './MapResize'
 
 const CENTER = [13.05, 80.35]
-const LAYER_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#fbbf24', '#4ade80', '#60a5fa']
+// Zone outlines rotate through the ink/state family (DESIGN.md tokens) —
+// dashed hairwork like restricted areas on a paper chart.
+const LAYER_COLORS = ['#1C2A35', '#5C6E7A', '#2E6E44', '#8F0A5D']
 
 // leaflet.heat attaches L.heatLayer to the Leaflet global; drive it manually.
 function HeatLayer({ points, enabled }) {
@@ -42,7 +44,7 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
         setVisible(Object.fromEntries(Object.keys(docs).map((k) => [k, true])))
       })
       .catch(() => {
-        /* sensitive layers are optional â€” the map still works without them */
+        /* sensitive layers are optional — the map still works without them */
       })
     return () => {
       alive = false
@@ -81,7 +83,7 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
                 })}
                 onEachFeature={(feature, layer) => {
                   const extra = feature?.properties?.name
-                  const label = extra ? `${prettyName(name)} Â· ${extra}` : prettyName(name)
+                  const label = extra ? `${prettyName(name)} · ${extra}` : prettyName(name)
                   layer.bindTooltip(label, { sticky: true })
                 }}
               />
@@ -110,10 +112,14 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
       </MapContainer>
 
       <div className="map-legend">
-        <div className="legend-title mono">OVERLAYS</div>
+        <div className="legend-title">Overlays</div>
         <label className="legend-row">
           <input type="checkbox" checked={heat} onChange={(e) => setHeat(e.target.checked)} />
-          <span className="legend-swatch heat-swatch" />
+          <span className="legend-ramp" aria-hidden="true">
+            {SEVERITY_BANDS.map((b) => (
+              <span key={b.color} className="legend-cell" style={{ background: b.color }} />
+            ))}
+          </span>
           severity heatmap
         </label>
         {Object.keys(layers).map((name, i) => (
@@ -124,16 +130,16 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
               onChange={(e) => setVisible((v) => ({ ...v, [name]: e.target.checked }))}
             />
             <span
-              className="legend-swatch dashed"
+              className="legend-swatch"
               style={{ borderColor: LAYER_COLORS[i % LAYER_COLORS.length] }}
             />
             {prettyName(name)}
           </label>
         ))}
-        <div className="legend-title mono">SEVERITY</div>
+        <div className="legend-title">Severity</div>
         {SEVERITY_BANDS.map((b) => (
           <div key={b.label} className="legend-row">
-            <span className="legend-dot" style={{ background: b.color }} />
+            <span className="legend-sq" style={{ background: b.color }} />
             <span className="legend-band mono">{b.label}</span>
           </div>
         ))}

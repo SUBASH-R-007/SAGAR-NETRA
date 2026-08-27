@@ -85,19 +85,18 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ◉
-          </span>
-          <div>
-            <h1>
-              SAGAR-NETRA <span className="brand-sep">—</span> DRISHTI Console
-            </h1>
-            <p className="tagline">
-              Side-scan sonar marine-debris detection · physics-verified contacts · offline-ready
-            </p>
+        <div className="masthead">
+          <div className="mast-line">
+            <h1 className="wordmark">SAGAR-NETRA</h1>
+            <span className="mast-rule" aria-hidden="true" />
+            <span className="mast-eyebrow">Drishti Survey Console</span>
           </div>
+          <p className="mast-meta mono">
+            DATUM WGS-84 · SURVEY {survey || 'NONE'} · {contacts.length} CONTACTS · MoES / NIOT
+            PS 26057
+          </p>
         </div>
+        <div className="keyline" aria-hidden="true" />
         <nav className="tabs" aria-label="views">
           {TABS.map((t) => (
             <button

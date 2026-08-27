@@ -133,7 +133,16 @@ export default function Waterfall({ survey, contacts, onReview, pushToast }) {
                       stroke={sevColor(c.severity)}
                       strokeWidth={Math.max(2, 2 / zoom)}
                       style={{ cursor: 'pointer', pointerEvents: 'all' }}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${c.id} ${c.cls}, severity ${Math.round(c.severity)}`}
                       onClick={() => setSelectedId(c.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelectedId(c.id)
+                        }
+                      }}
                     >
                       <title>{`${c.id} · ${c.cls} · sev ${Math.round(c.severity)}`}</title>
                     </rect>
@@ -159,8 +168,12 @@ export default function Waterfall({ survey, contacts, onReview, pushToast }) {
           <aside className="wf-panel">
             <div className="wf-panel-head">
               <span className="mono">{selected.id}</span>
-              <button type="button" className="btn ghost" onClick={() => setSelectedId(null)}>
-                ✕
+              <button
+                type="button"
+                className="btn ghost small"
+                onClick={() => setSelectedId(null)}
+              >
+                Close
               </button>
             </div>
             <ContactPopover
