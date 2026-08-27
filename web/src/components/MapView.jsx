@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet.heat'
 import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet'
@@ -6,6 +6,7 @@ import { fetchLayers } from '../api'
 import { SEVERITY_BANDS, prettyName, sevColor } from '../utils'
 import ContactPopover from './ContactPopover'
 import EmptyState from './EmptyState'
+import MapResize from './MapResize'
 
 const CENTER = [13.05, 80.35]
 const LAYER_COLORS = ['#22d3ee', '#a78bfa', '#f472b6', '#fbbf24', '#4ade80', '#60a5fa']
@@ -41,7 +42,7 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
         setVisible(Object.fromEntries(Object.keys(docs).map((k) => [k, true])))
       })
       .catch(() => {
-        /* sensitive layers are optional — the map still works without them */
+        /* sensitive layers are optional â€” the map still works without them */
       })
     return () => {
       alive = false
@@ -56,7 +57,14 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
   return (
     <div className="map-wrap">
       <MapContainer center={CENTER} zoom={13} className="map" preferCanvas>
-        <TileLayer url="/tiles/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+        <MapResize />
+        {/* Esri World Imagery via the backend's offline-caching proxy. */}
+        <TileLayer
+          url="/tiles/{z}/{x}/{y}.png"
+          attribution="Esri, Maxar, Earthstar Geographics, and the GIS community"
+          maxNativeZoom={17}
+          maxZoom={19}
+        />
 
         {Object.entries(layers).map(
           ([name, fc], i) =>
@@ -73,7 +81,7 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
                 })}
                 onEachFeature={(feature, layer) => {
                   const extra = feature?.properties?.name
-                  const label = extra ? `${prettyName(name)} · ${extra}` : prettyName(name)
+                  const label = extra ? `${prettyName(name)} Â· ${extra}` : prettyName(name)
                   layer.bindTooltip(label, { sticky: true })
                 }}
               />

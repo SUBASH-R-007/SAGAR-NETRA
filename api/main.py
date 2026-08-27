@@ -8,7 +8,9 @@ plus the built React dashboard from ``web/dist`` when present.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
 import threading
 import time
 import urllib.request
@@ -46,7 +48,19 @@ UPLOAD_SUFFIXES = {
     ".sl2", ".sl3", ".zip",
 }
 TILE_CACHE = REPO_ROOT / "data" / "tile_cache"
-OSM_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+#: Basemap source. Esri World Imagery: satellite with native coverage to deep
+#: zoom everywhere (Ocean Base runs out at ~z10 offshore), no API key,
+#: permitted with attribution — unlike tile.openstreetmap.org, whose usage
+#: policy blocks server-side proxies like this one ("access blocked" tiles).
+#: Note Esri's {z}/{y}/{x} path order. Override with SAGAR_TILE_URL and keep
+#: the frontend attribution in MapView.jsx in step with whatever you point at.
+TILE_URL = os.environ.get(
+    "SAGAR_TILE_URL",
+    "https://server.arcgisonline.com/ArcGIS/rest/services/"
+    "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+)
+#: Cache is namespaced per source so switching providers never mixes styles.
+TILE_CACHE_SLUG = hashlib.sha1(TILE_URL.encode()).hexdigest()[:8]
 WS_POLL_S = 0.25
 #: Stream-mode events kept on a job snapshot (the WS forwards this window,
 #: so a reconnecting dashboard replays the freshest detections, not megabytes).
@@ -433,14 +447,14 @@ def create_app(
 
     @app.get("/tiles/{z}/{x}/{y}.png")
     def tile(z: int, x: int, y: int) -> Response:
-        """OSM tile proxy with a disk cache: online once, offline forever."""
-        cached = TILE_CACHE / str(z) / str(x) / f"{y}.png"
+        """Basemap tile proxy with a disk cache: online once, offline forever."""
+        cached = TILE_CACHE / TILE_CACHE_SLUG / str(z) / str(x) / f"{y}.png"
         if cached.exists():
             return Response(cached.read_bytes(), media_type="image/png")
         try:
             request = urllib.request.Request(
-                OSM_URL.format(z=z, x=x, y=y),
-                headers={"User-Agent": "SAGAR-NETRA/0.1 (offline-cache)"},
+                TILE_URL.format(z=z, x=x, y=y),
+                headers={"User-Agent": "SAGAR-NETRA/0.1 (offline tile cache)"},
             )
             with urllib.request.urlopen(request, timeout=10) as resp:
                 data = resp.read()
@@ -451,6 +465,24 @@ def create_app(
             return Response(_fallback_tile(), media_type="image/png")
 
     # ---------------------------------------------------------- frontend --
+
+    @app.middleware("http")
+    async def _cache_policy(request, call_next):
+        """Cache the immutable, never the shell.
+
+        Vite fingerprints every bundle under /assets/, so those files can be
+        cached forever — but index.html references them BY HASH, and a cached
+        shell pointing at bundles a later rebuild deleted renders a broken or
+        frozen dashboard (the "nothing changed after the update" bug). HTML
+        therefore always revalidates.
+        """
+        response = await call_next(request)
+        content_type = response.headers.get("content-type", "")
+        if request.url.path.startswith("/assets/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        elif "text/html" in content_type:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     dist = REPO_ROOT / "web" / "dist"
     if dist.is_dir():

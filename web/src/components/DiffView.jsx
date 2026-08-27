@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { CircleMarker, MapContainer, TileLayer, Tooltip } from 'react-leaflet'
 import { fetchDiff } from '../api'
 import EmptyState from './EmptyState'
+import MapResize from './MapResize'
 import SeverityChip from './SeverityChip'
 
 const CENTER = [13.05, 80.35]
@@ -87,14 +88,14 @@ export default function DiffView({ surveys, pushToast }) {
           />
         </label>
         <button type="button" className="btn primary" onClick={run} disabled={loading}>
-          {loading ? 'Comparing…' : 'Compare'}
+          {loading ? 'Comparingâ€¦' : 'Compare'}
         </button>
       </div>
 
       {!result && !loading && (
         <EmptyState
           title="Run a comparison"
-          hint="Contacts in B with no A contact within the radius are flagged NEW — likely fresh debris."
+          hint="Contacts in B with no A contact within the radius are flagged NEW â€” likely fresh debris."
         />
       )}
 
@@ -102,11 +103,11 @@ export default function DiffView({ surveys, pushToast }) {
         <div className="diff-result">
           <div className="diff-stats">
             <div className="stat">
-              <span className="stat-value mono">{result.n_a ?? '—'}</span>
+              <span className="stat-value mono">{result.n_a ?? 'â€”'}</span>
               <span className="stat-label">contacts in A</span>
             </div>
             <div className="stat">
-              <span className="stat-value mono">{result.n_b ?? '—'}</span>
+              <span className="stat-value mono">{result.n_b ?? 'â€”'}</span>
               <span className="stat-label">contacts in B</span>
             </div>
             <div className="stat new">
@@ -127,7 +128,13 @@ export default function DiffView({ surveys, pushToast }) {
               className="map"
               preferCanvas
             >
-              <TileLayer url="/tiles/{z}/{x}/{y}.png" attribution="&copy; OpenStreetMap contributors" />
+              <MapResize />
+              <TileLayer
+                url="/tiles/{z}/{x}/{y}.png"
+                attribution="Esri, Maxar, Earthstar Geographics, and the GIS community"
+                maxNativeZoom={17}
+                maxZoom={19}
+              />
               {matched.map((m, i) =>
                 m.b ? (
                   <CircleMarker
@@ -136,7 +143,7 @@ export default function DiffView({ surveys, pushToast }) {
                     radius={6}
                     pathOptions={{ color: '#8296ab', fillColor: '#8296ab', fillOpacity: 0.4, weight: 1.5 }}
                   >
-                    <Tooltip>{`matched: ${m.b.id} ↔ ${m.a?.id} (${Number(m.distance_m).toFixed(1)} m)`}</Tooltip>
+                    <Tooltip>{`matched: ${m.b.id} â†” ${m.a?.id} (${Number(m.distance_m).toFixed(1)} m)`}</Tooltip>
                   </CircleMarker>
                 ) : null,
               )}
@@ -147,7 +154,7 @@ export default function DiffView({ surveys, pushToast }) {
                   radius={8}
                   pathOptions={{ color: '#ff3b30', fillColor: '#ff3b30', fillOpacity: 0.65, weight: 2 }}
                 >
-                  <Tooltip>{`NEW: ${c.id} · ${c.cls} · sev ${Math.round(c.severity)}`}</Tooltip>
+                  <Tooltip>{`NEW: ${c.id} Â· ${c.cls} Â· sev ${Math.round(c.severity)}`}</Tooltip>
                 </CircleMarker>
               ))}
             </MapContainer>
@@ -157,7 +164,7 @@ export default function DiffView({ surveys, pushToast }) {
             <div className="diff-col">
               <h3 className="mono">NEW CONTACTS ({newContacts.length})</h3>
               {newContacts.length === 0 ? (
-                <p className="muted">No new contacts — nothing appeared between the surveys.</p>
+                <p className="muted">No new contacts â€” nothing appeared between the surveys.</p>
               ) : (
                 <div className="table-scroll short">
                   <table className="contacts-table">
@@ -211,8 +218,8 @@ export default function DiffView({ surveys, pushToast }) {
                     <tbody>
                       {matched.map((m, i) => (
                         <tr key={m.b?.id || i}>
-                          <td className="mono">{m.b?.id ?? '—'}</td>
-                          <td className="mono">{m.a?.id ?? '—'}</td>
+                          <td className="mono">{m.b?.id ?? 'â€”'}</td>
+                          <td className="mono">{m.a?.id ?? 'â€”'}</td>
                           <td className="num mono">{Number(m.distance_m).toFixed(1)} m</td>
                         </tr>
                       ))}
