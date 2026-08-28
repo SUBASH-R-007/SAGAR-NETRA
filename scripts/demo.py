@@ -11,10 +11,52 @@ the results loaded.
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import os
+import sys
 import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# ``python scripts/demo.py`` puts scripts/ on sys.path -- not the repo root --
+# so the package imports below only resolve if SAGAR-NETRA happens to be
+# pip-installed. Put the checkout first so it always wins over an installed copy.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+#: Third-party packages the demo cannot run without, checked up front so the
+#: usual mistake -- a shell where the virtualenv was never activated -- reports
+#: itself in one readable line instead of as a traceback from deep inside the
+#: pipeline, halfway through a presentation.
+REQUIRED = ("pyxtf", "torch", "ultralytics", "cv2", "sklearn", "reportlab", "simplekml")
+
+#: Where ``python -m venv .venv`` puts the interpreter on this platform.
+VENV_RELPATH = Path(".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
+
+
+def check_environment() -> None:
+    """Abort with the exact command to run when the interpreter is the wrong one."""
+    missing = [name for name in REQUIRED if importlib.util.find_spec(name) is None]
+    if not missing:
+        return
+
+    print()
+    print(f"Cannot run: missing {', '.join(missing)}")
+    print(f"Interpreter: {sys.executable}")
+    print()
+
+    if (REPO_ROOT / VENV_RELPATH).exists():
+        argv = " ".join(sys.argv[1:])
+        print("That is not the project virtualenv. From the repo root, run:")
+        print()
+        print(f"  {VENV_RELPATH} scripts/demo.py {argv}".rstrip())
+    else:
+        print("The virtualenv does not exist yet. From the repo root, run:")
+        print()
+        print("  python -m venv .venv")
+        print(f"  {VENV_RELPATH.parent / 'pip'} install -e .[ml,api,dev]")
+    raise SystemExit(1)
 
 
 def narrate(stage: str = "", fraction: float = 0.0, message: str = "", **_: object) -> None:
@@ -34,6 +76,8 @@ def main() -> None:
     print("=" * 72)
     print("SAGAR-NETRA — AI-powered marine debris detection from side-scan sonar")
     print("=" * 72)
+
+    check_environment()
 
     if not args.input.exists():
         print(f"\nSample survey missing — generating {args.input} ...")
