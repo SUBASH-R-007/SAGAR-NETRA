@@ -137,6 +137,7 @@ def process_survey(
     output_root: str | Path = DEFAULT_OUTPUT_ROOT,
     preprocess_config: dict | None = None,
     mission: str | None = None,
+    parser_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the full chain on one survey file; returns a summary dict.
 
@@ -162,7 +163,9 @@ def process_survey(
 
     stage = _band_progress(update, "parse", f"parsing {survey}")
     stage(frac=0.0)
-    pa = load_survey(path)
+    # parser_kwargs carries declared survey geometry for formats that record
+    # none (a plain waterfall image); logs ignore it.
+    pa = load_survey(path, **(parser_kwargs or {}))
     stage(frac=1.0)
 
     pre = preprocess(

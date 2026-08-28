@@ -156,3 +156,6 @@ def test_upload_with_sar_mission_processes(client, tiny_xtf) -> None:
         time.sleep(0.5)
     assert job["status"] == "done", f"job failed: {job.get('error')}"
     assert job["n_contacts"] >= 1
+    # the console's ingest ledger names the profile a survey ran under, so the
+    # snapshot has to carry it — a reload must not silently drop the provenance
+    assert job["mission"] == "sar"

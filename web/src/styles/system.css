@@ -1,0 +1,223 @@
+/* ============================================================================
+   SYSTEM STATUS view — the edge-deployment evidence panel.
+
+   Tokens, tags, tables, buttons and the shared eyebrow all come from
+   styles.css; this sheet only adds the layout that view needs. Same rules:
+   hairlines not shadows, radius <= 2px, flat fills, navy = structure,
+   saffron = state (nothing here is stateful, so nothing here is saffron),
+   the severity ramp is not used at all — this view reports plant, not risk.
+   ========================================================================== */
+
+.sys {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* toolbar strip — same anatomy as .contacts-toolbar / .diff-toolbar */
+.sys-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper);
+  flex-shrink: 0;
+}
+
+.sys-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px 24px 24px;
+}
+
+.sys-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* .rail-title carries the shared eyebrow; this only kills the heading margin */
+.sys-title {
+  margin: 0;
+}
+
+/* a failed refresh that still has a good previous read to show */
+.sys-stale {
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--hairline-2);
+  border-left: 3px solid var(--error);
+  border-radius: 2px;
+  font-size: var(--fs-detail);
+  color: var(--ink);
+}
+
+/* ── fact strip — label over value, hairline-divided cells ───────────────── */
+
+.sys-facts {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+}
+
+.sys-fact {
+  flex: 1 1 auto;
+  min-width: 168px;
+  padding: 10px 16px;
+  border-right: 1px solid var(--hairline);
+}
+
+.sys-fact:last-child {
+  border-right: 0;
+}
+
+.sys-fact-label {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.sys-fact-value {
+  margin: 4px 0 0;
+  font-size: var(--fs-mono);
+  color: var(--ink);
+}
+
+/* ── tables (model registry, ingest capability) ──────────────────────────── */
+
+.sys-table-wrap {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  overflow-x: auto;
+}
+
+/* columns keep their density on narrow viewports; the wrapper scrolls */
+.sys-table {
+  min-width: 720px;
+}
+
+.sys-artefact {
+  white-space: nowrap;
+}
+
+.sys-dash {
+  color: var(--ink-faint);
+}
+
+/* not a hash — the API's literal fallback marker, so it must not read as one */
+.sys-fp-note {
+  font-family: var(--mono);
+  color: var(--ink-dim);
+}
+
+.sys-caption {
+  max-width: 78ch;
+  font-size: var(--fs-detail);
+  color: var(--ink-dim);
+}
+
+/* ── processing chain — flat navy hairline boxes, no fills, no shadows ───── */
+
+.sys-chain-scroll {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  padding: 8px 12px;
+  overflow-x: auto;
+}
+
+/* fixed geometry: never shrinks below legible, scrolls in its own container,
+   scales up proportionally when there is room */
+.sys-chain {
+  display: block;
+  width: 100%;
+  min-width: 1160px;
+  height: auto;
+}
+
+.sys-chain-box {
+  fill: var(--panel);
+  stroke: var(--navy);
+  stroke-width: 1;
+}
+
+.sys-chain-id {
+  fill: var(--navy);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+}
+
+.sys-chain-name {
+  fill: var(--navy);
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.sys-chain-rule {
+  stroke: var(--hairline);
+  stroke-width: 1;
+}
+
+.sys-chain-dot {
+  fill: var(--hairline-2);
+}
+
+.sys-chain-stage {
+  fill: var(--ink-dim);
+  font-family: var(--sans);
+  font-size: 11px;
+}
+
+.sys-chain-arrow line {
+  stroke: var(--navy);
+  stroke-width: 1;
+}
+
+.sys-chain-arrow polygon {
+  fill: var(--navy);
+}
+
+/* ── offline posture — plain sentences in a ruled panel ──────────────────── */
+
+.sys-posture {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+}
+
+.sys-posture p {
+  max-width: 86ch;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+
+.sys-posture p:last-child {
+  border-bottom: 0;
+}
+
+/* ── responsive — match the shell's 980px gutter step ────────────────────── */
+
+@media (max-width: 980px) {
+  .sys-toolbar {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .sys-body {
+    padding: 16px;
+  }
+}

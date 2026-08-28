@@ -159,3 +159,57 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
 6. **The PDF's stack deltas we did not adopt**: TypeScript/Tailwind/Recharts (working JSX+CSS
    dashboard stays; charts are hand-rolled where needed), DeepLabV3+ (U-Net specialist), YOLOv8-s
    (v8n per the PDF's own Jetson-class advice). Functional parity, not framework churn.
+
+## Live-stream consistency round
+
+1. **Streaming windows must be equalised like the whole survey.** CLAHE divides an image into a
+   fixed `tile_grid` of cells and equalises each independently, so the grid's *row* count decides
+   how many pings share one transfer curve. A 200-ping window under the stock `(8, 8)` grid gets
+   25 pings per cell against a 600-ping survey's 75 — a 3x more aggressive equaliser on identical
+   seabed, which lifts Rayleigh speckle into structure the anomaly autoencoder never saw in
+   training. Because Brain C's threshold is calibrated once at training time, it then fired
+   everywhere: measured **0.50 anomalies/tile** over the whole survey against **19.8/tile** in
+   windows, i.e. a 600-ping survey with 3 seeded targets streamed as **179 contacts** (175 of them
+   spurious `unknown_anomaly`) versus 12 in batch.
+2. **The fix scales the CLAHE row count by the window's share of the survey**
+   (`api.realtime._window_preprocess_config`), restoring comparable pings-per-cell. Streamed
+   output fell to 27 contacts with the real detections identical to batch (ghost_net, container,
+   cylinder_drum, tire — one each). Column count is untouched: swath width does not vary window
+   to window. Batch is unaffected — a window covering the whole survey resolves to the stock grid.
+3. **Ruled out by measurement, not assumption:** forcing the window to use the full survey's
+   percentile-stretch bounds *increased* the flood (23.3/tile), so the global stretch was not the
+   cause. Only the cell geometry mattered.
+4. **The residual gap is coverage, not normalisation.** Streaming re-processes overlapping pings,
+   so it examines 24 tiles where batch examines 12; the remaining anomaly excess scales with that
+   and is dominated by low-confidence (~11%) contacts that sort to the bottom of the severity
+   queue.
+5. **Latent issue worth knowing:** the same scale dependence means two *batch* surveys of very
+   different lengths are also equalised slightly differently. Training scenes span 700–1100 pings
+   so the deployed models see a narrow band of this, but expressing the CLAHE grid in pixels
+   rather than cell counts is the principled long-term fix.
+
+## Image-upload round
+
+1. **A nav-less format needs declared geometry, not a guess.** A survey log records altitude,
+   range and position per ping; an image records none of it, so uploading a PNG failed at
+   slant-range correction ("needs finite positive altitude for every ping"). The operator now
+   states what the sonar was set to at upload time (`altitude_m`, `range_m` required; position,
+   heading and tow depth optional) and the full chain runs: slant correction, height from shadow
+   and WGS-84 geotagging. `range_m <= altitude_m` is rejected — a swath only exists beyond the
+   first bottom return.
+2. **The synthesised track is labelled as a fiction.** With a declared start position the parser
+   lays a straight constant-heading line so contacts geotag correctly relative to it, and records
+   `meta["nav_source"] = "declared-line"`. It positions detections correctly for a benchmark image
+   or a demo; it is not recorded navigation and the metadata says so.
+3. **A display image must not be gain-normalised twice.** A waterfall written for display has
+   already had its range falloff flattened and its contrast stretched. Running EGN over it again
+   invents range structure that was never in the water, and the open-set anomaly brain — calibrated
+   on singly normalised imagery — reads that structure as debris. Measured on the bundled
+   waterfall: **92 spurious anomalies with EGN on, 0 with it off**; total contacts fell from 105 to
+   13, all named classes, with heights matching the log path (wreck 2.99 m, container 2.36 m).
+   The image parser therefore declares `gain_normalized=True` by default and `preprocess` skips
+   EGN for such sources — an explicit `egn.enabled` from the caller always wins, and an export of
+   raw uncorrected amplitudes can pass `gain_normalized=False`.
+4. **Same failure class as the streaming flood.** Both were the anomaly brain reacting to imagery
+   normalised differently from its calibration set, not to debris. Worth remembering whenever a
+   new input path is added: match the normalisation the brains were calibrated on, or recalibrate.

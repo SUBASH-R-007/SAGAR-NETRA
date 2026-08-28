@@ -1,0 +1,247 @@
+/* ============================================================================
+   enhancements — three additions to existing components:
+     · UploadRail  → mission profile selector
+     · DiffView    → cross-view (multi-pass) confirmation
+     · ContactsTable → priority / recommended-action columns + position budget
+   Tokens, tags, tables, stats and buttons all come from styles.css. Nothing
+   here introduces a new color, a radius above 2px, a gradient or a shadow.
+   ========================================================================== */
+
+/* ── UploadRail · mission profile ────────────────────────────────────────── */
+
+/* stacked label + control + caption, sized to the 300px rail */
+.rail-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rail-field select {
+  width: 100%;
+}
+
+.rail-field select:disabled {
+  background: var(--well);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.rail-caption {
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.rail-caption.warn {
+  color: var(--error);
+}
+
+/* ledger sub-line naming the profile a job was submitted under */
+.job-mission {
+  color: var(--ink-dim);
+}
+
+.job-mission .mono {
+  color: var(--ink);
+}
+
+/* ── DiffView · cross-view confirmation ──────────────────────────────────── */
+
+/* second analysis, ruled off from the change-detection block above it */
+.xv {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--hairline);
+}
+
+.xv-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.xv-doctrine {
+  max-width: 760px;
+  font-size: var(--fs-body);
+  color: var(--ink-dim);
+}
+
+.xv-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.xv-block > p:not(.xv-note) {
+  font-size: var(--fs-body);
+  color: var(--ink-dim);
+}
+
+.xv-note {
+  max-width: 760px;
+  margin-top: 8px;
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+.xv-head .xv-note {
+  margin-top: 0;
+  letter-spacing: 0.06em;
+}
+
+.xv-err {
+  font-size: var(--fs-body);
+  color: var(--error);
+}
+
+/* A tag column needs no visible heading, but a screen reader still reads the
+   header row cell by cell — so the name is present and only visually hidden. */
+.th-quiet {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* the failed half of the comparison, stated on the page. No top rule: it sits
+   directly under the toolbar's own hairline. */
+.diff-fail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 24px;
+}
+
+/* corroborated = state OK; single-pass = the caution rung of the severity ramp */
+.stat.corroborated {
+  border-color: var(--ok);
+}
+
+.stat.corroborated .stat-value {
+  color: var(--ok);
+}
+
+.stat.single {
+  border-color: var(--sev-high);
+}
+
+.stat.single .stat-value {
+  color: var(--sev-high);
+}
+
+.resurvey-tag {
+  color: var(--sev-high);
+  border-color: var(--sev-high);
+}
+
+/* which pass a single-view contact came from */
+.side-tag {
+  color: var(--ink-dim);
+}
+
+/* ── ContactsTable · priority, recommended action, position budget ───────── */
+
+/* priority reads on the severity ramp: HIGH critical, MEDIUM high, LOW low */
+.pri-high {
+  color: var(--sev-critical);
+  border-color: var(--sev-critical);
+}
+
+.pri-medium {
+  color: var(--sev-high);
+  border-color: var(--sev-high);
+}
+
+.pri-low {
+  color: var(--sev-low);
+  border-color: var(--sev-low);
+}
+
+/* truncated instruction — the full text rides on the title attribute */
+.rec-action {
+  display: block;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+}
+
+/* position error budget, under the severity breakdown in the expanded row */
+.pos-acc {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 520px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--hairline);
+}
+
+.pos-acc-value {
+  font-size: var(--fs-mono);
+  color: var(--ink-dim);
+}
+
+/* the metre figure is data, so it takes the mono face and tabular figures */
+.pos-acc-value b {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.pos-acc-note {
+  font-size: var(--fs-micro);
+  line-height: 1.5;
+  color: var(--ink-faint);
+}
+
+/* ── responsive — match the 980px gutter step in styles.css ──────────────── */
+
+@media (max-width: 980px) {
+  .xv,
+  .diff-fail {
+    padding: 16px;
+  }
+}
+
+/* --- sonar geometry form (image uploads) ---------------------------------
+   Shown only while an image is staged: a picture of the seabed carries no
+   navigation, so the operator states what the sonar was set to before the
+   pipeline can correct range, measure height or geotag anything. */
+.geom-form {
+  border: 1px solid var(--hairline-2);
+  border-top: 2px solid var(--saffron);
+  background: var(--panel);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.geom-title {
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0;
+}
+.geom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.geom-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.geom-cell .num-input { width: 100%; }
+.geom-actions { display: flex; gap: 8px; }

@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchContacts, fetchSurveys } from './api'
 import Chakra from './components/Chakra'
 import Copilot from './components/Copilot'
+import Overview from './components/Overview'
+import RecoveryPlanner from './components/RecoveryPlanner'
+import SystemStatus from './components/SystemStatus'
 import ContactsTable from './components/ContactsTable'
 import DiffView from './components/DiffView'
 import FilterBar from './components/FilterBar'
@@ -10,7 +13,7 @@ import Toasts from './components/Toasts'
 import UploadRail from './components/UploadRail'
 import Waterfall from './components/Waterfall'
 
-const TABS = ['Map', 'Waterfall', 'Contacts', 'Diff', 'Copilot']
+const TABS = ['Overview', 'Map', 'Waterfall', 'Contacts', 'Recovery', 'Diff', 'Copilot', 'System']
 const FILTERED_TABS = new Set(['Map', 'Waterfall', 'Contacts'])
 
 // A- / A / A+ — the standard GoI portal accessibility control. Applied to the
@@ -34,7 +37,7 @@ function readStoredFontStep() {
 let toastSeq = 0
 
 export default function App() {
-  const [tab, setTab] = useState('Map')
+  const [tab, setTab] = useState('Overview')
   const [surveys, setSurveys] = useState([])
   const [survey, setSurvey] = useState('')
   const [contacts, setContacts] = useState([])
@@ -232,8 +235,21 @@ export default function App() {
               pushToast={pushToast}
             />
           )}
+          {tab === 'Overview' && (
+            <Overview
+              contacts={contacts}
+              survey={survey}
+              surveys={surveys}
+              onTab={setTab}
+              pushToast={pushToast}
+            />
+          )}
+          {tab === 'Recovery' && (
+            <RecoveryPlanner survey={survey} contacts={contacts} pushToast={pushToast} />
+          )}
           {tab === 'Diff' && <DiffView surveys={surveys} pushToast={pushToast} />}
           {tab === 'Copilot' && <Copilot pushToast={pushToast} />}
+          {tab === 'System' && <SystemStatus pushToast={pushToast} />}
         </main>
         <UploadRail pushToast={pushToast} onJobDone={(name) => refreshSurveys(name)} />
       </div>

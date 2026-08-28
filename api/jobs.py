@@ -17,6 +17,11 @@ from typing import Any
 class Job:
     id: str
     filename: str
+    #: mission profile the upload was submitted under (configs/missions/*.yaml),
+    #: None for a standard survey. Carried on the snapshot so the dashboard's
+    #: ingest ledger still names the profile after a reload, when the browser's
+    #: own record of the submission is gone.
+    mission: str | None = None
     status: str = "queued"  # queued | running | done | error
     stage: str = ""
     fraction: float = 0.0
@@ -41,8 +46,8 @@ class JobRegistry:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
 
-    def create(self, filename: str) -> Job:
-        job = Job(id=uuid.uuid4().hex[:12], filename=filename)
+    def create(self, filename: str, mission: str | None = None) -> Job:
+        job = Job(id=uuid.uuid4().hex[:12], filename=filename, mission=mission)
         with self._lock:
             self._jobs[job.id] = job
         return job

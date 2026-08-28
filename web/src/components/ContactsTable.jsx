@@ -5,12 +5,20 @@ import EmptyState from './EmptyState'
 import PhysicsBadges from './PhysicsBadges'
 import SeverityChip from './SeverityChip'
 
+// HIGH / MEDIUM / LOW is an ordered band (geoscribe.report.priority_for), so it
+// sorts on rank, not alphabetically.
+const PRIORITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 }
+
 const SORTS = {
   severity: (c) => c.severity,
   confidence: (c) => c.confidence,
   class: (c) => c.cls,
   id: (c) => c.id,
+  priority: (c) => PRIORITY_RANK[c.priority] ?? 0,
+  action: (c) => c.recommended_action || '',
 }
+// Header keys that read best low-to-high on first click.
+const ASCENDING_FIRST = new Set(['class', 'id', 'action'])
 const REPORT_FMTS = ['json', 'csv', 'geojson', 'kml', 'pdf']
 const BREAKDOWN_KEYS = ['hazard', 'size', 'height', 'depth', 'proximity']
 // Recovery workflow ring: flagged -> assigned -> retrieved (-> flagged to undo).
@@ -44,6 +52,39 @@ function BreakdownBars({ breakdown }) {
   )
 }
 
+// Triage priority as a band-coloured tag — HIGH reads on the critical token,
+// MEDIUM on high, LOW on low (geoscribe.report.priority_for).
+function PriorityTag({ value }) {
+  if (!value) return <span className="muted">—</span>
+  return (
+    <span
+      className={`tag pri-${String(value).toLowerCase()}`}
+      title={`triage priority ${value}`}
+    >
+      {value}
+    </span>
+  )
+}
+
+// Position error budget from geoscribe.build.position_accuracy. The stored 0.0
+// means "no estimate on this record", so it shows a dash, never "±0 m".
+function PositionAccuracy({ value }) {
+  return (
+    <div className="pos-acc">
+      <div className="pos-acc-value">
+        Position accuracy <b>{value ? `±${Number(value).toFixed(1)} m` : '—'}</b>
+      </div>
+      <div className="pos-acc-note">
+        {value
+          ? `Ground resolution, layback and nav-fix terms are summed linearly rather than in
+             quadrature — each is a bias, not independent noise — so this is a conservative
+             search radius a diver can plan against.`
+          : 'Not recorded: this contact was stored before the accuracy estimate existed.'}
+      </div>
+    </div>
+  )
+}
+
 export default function ContactsTable({ contacts, survey, onReview, pushToast }) {
   const [sortKey, setSortKey] = useState('severity')
   const [dir, setDir] = useState(-1)
@@ -66,7 +107,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
       setDir((d) => -d)
     } else {
       setSortKey(key)
-      setDir(key === 'class' || key === 'id' ? 1 : -1)
+      setDir(ASCENDING_FIRST.has(key) ? 1 : -1)
     }
   }
 
@@ -161,6 +202,16 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                     Sev{sortMark('severity')}
                   </button>
                 </th>
+                <th className="sortable" aria-sort={ariaSort('priority')}>
+                  <button type="button" className="cell-btn" onClick={() => clickSort('priority')}>
+                    Priority{sortMark('priority')}
+                  </button>
+                </th>
+                <th className="sortable" aria-sort={ariaSort('action')}>
+                  <button type="button" className="cell-btn" onClick={() => clickSort('action')}>
+                    Recommended action{sortMark('action')}
+                  </button>
+                </th>
                 <th>Dims L×W×H</th>
                 <th className="num">Depth</th>
                 <th>Physics</th>
@@ -203,6 +254,18 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                     <td className="num mono">{Math.round(c.confidence)}%</td>
                     <td className="num">
                       <SeverityChip value={c.severity} />
+                    </td>
+                    <td>
+                      <PriorityTag value={c.priority} />
+                    </td>
+                    <td>
+                      {c.recommended_action ? (
+                        <span className="rec-action" title={c.recommended_action}>
+                          {c.recommended_action}
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
                     </td>
                     <td className="mono">{fmtDims(c.dims)}</td>
                     <td className="num mono">{fmtMeters(c.depth_m)}</td>
@@ -259,8 +322,9 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                   </tr>
                   {expandedId === c.id && (
                     <tr className="expand-row">
-                      <td colSpan={11}>
+                      <td colSpan={13}>
                         <BreakdownBars breakdown={c.severity_breakdown} />
+                        <PositionAccuracy value={c.position_accuracy_m} />
                       </td>
                     </tr>
                   )}

@@ -112,8 +112,8 @@ Five layers, each independently testable, each with its own config file and test
 ```bash
 python -m venv .venv
 .venv/Scripts/pip install -e ".[dev,ml,api,geo]"
-python scripts/make_sample_xtf.py     # deterministic bundled sample survey
-python scripts/demo.py --serve        # full pipeline, then the console at :8000
+.venv/Scripts/python scripts/make_sample_xtf.py   # deterministic bundled sample survey
+.venv/Scripts/python scripts/demo.py --serve      # full pipeline, console at :8000
 ```
 
 Or containerised: `docker compose up --build` (add `--profile postgis` for a shore station).
@@ -121,7 +121,7 @@ Or containerised: `docker compose up --build` (add `--profile postgis` for a sho
 ### The 90-second judge demo
 
 ```bash
-python scripts/demo.py --serve
+.venv/Scripts/python scripts/demo.py --serve
 ```
 
 narrates the whole flow on the bundled survey and prints the contact table:
