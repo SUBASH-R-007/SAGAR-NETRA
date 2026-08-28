@@ -1,0 +1,330 @@
+/* ============================================================================
+   COMMAND OVERVIEW (components/Overview.jsx)
+
+   Tokens, type scale and form rules all come from styles.css — this sheet only
+   lays out the six blocks of the landing view. Nothing here introduces a color,
+   a font size, a radius or a shadow that is not already in the system:
+   hairline rectangles on panel, navy for the class bars (structure), the
+   severity ramp for status, 8px grid inside a block and 24px between blocks.
+   ========================================================================== */
+
+.overview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px 24px 24px;
+  background: var(--paper);
+}
+
+.ov-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Same eyebrow as .rail-title / .legend-title in styles.css. Restated (not
+   appended to that selector list) because this sheet must not edit styles.css. */
+.ov-eyebrow {
+  font-family: var(--display);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.ov-sub {
+  max-width: 76ch;
+  font-size: var(--fs-detail);
+  color: var(--ink-dim);
+}
+
+.ov-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+}
+
+/* ── 1 · KPI tiles ───────────────────────────────────────────────────────── */
+
+.ov-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 8px;
+}
+
+.ov-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 16px;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.ov-tile:hover {
+  border-color: var(--ink-dim);
+}
+
+.ov-tile-value {
+  font-size: var(--fs-stat);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.ov-tile-unit {
+  font-size: var(--fs-mono);
+  font-weight: 400;
+  color: var(--ink-dim);
+}
+
+.ov-tile-label {
+  font-family: var(--display);
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.ov-tile-context {
+  font-size: var(--fs-micro);
+  color: var(--ink-faint);
+}
+
+/* ── 2 + 3 · distribution and breakdown, paired once there is room ───────── */
+
+.ov-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (min-width: 1100px) {
+  .ov-split {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+/* ── 2 · severity distribution — stacked bar + band legend ───────────────── */
+
+/* The well shows through when a band is empty; the frame is a hairline, and
+   the transparent hit buttons sit exactly over the painted segments. */
+.ov-bar-wrap {
+  position: relative;
+  height: 28px;
+  background: var(--well);
+  border: 1px solid var(--hairline-2);
+}
+
+.ov-bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ov-bar-hits {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.ov-bar-hit {
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.ov-bar-hit:hover {
+  outline: 1px solid var(--ink);
+  outline-offset: -1px;
+}
+
+.ov-bar-hit:focus-visible {
+  outline: 2px solid var(--saffron);
+  outline-offset: -2px;
+}
+
+.ov-bands {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+
+.ov-band {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-band-sq {
+  width: 8px;
+  height: 8px;
+  flex: none;
+}
+
+.ov-band-count {
+  font-size: var(--fs-mono);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.ov-band-name {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.ov-band-range {
+  font-size: var(--fs-micro);
+  color: var(--ink-faint);
+}
+
+/* ── 3 · class breakdown — navy bars scaled to the largest class ─────────── */
+
+.ov-classes {
+  gap: 8px;
+}
+
+.ov-class-row {
+  display: grid;
+  grid-template-columns: minmax(0, 132px) 1fr 40px;
+  align-items: center;
+  gap: 8px;
+}
+
+.ov-class-name {
+  font-size: var(--fs-body);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-class-track {
+  height: 10px;
+  background: var(--well);
+}
+
+.ov-class-fill {
+  display: block;
+  height: 100%;
+  background: var(--navy);
+}
+
+.ov-class-count {
+  font-size: var(--fs-mono);
+  text-align: right;
+  color: var(--ink);
+}
+
+/* ── 4 · priority action queue ───────────────────────────────────────────── */
+
+.ov-queue {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  overflow-x: auto;
+}
+
+/* the action is the point of the table — give it every leftover pixel */
+.ov-queue th.ov-action-col {
+  width: 100%;
+}
+
+.ov-queue td.ov-action-col {
+  white-space: normal;
+  color: var(--ink);
+}
+
+/* the queue is a fixed five-row block: no sticky head needed */
+.ov-queue .contacts-table th {
+  position: static;
+}
+
+.ov-queue .contacts-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* priority reads as status, so it borrows the severity ramp it derives from */
+.ov-prio-high {
+  color: var(--sev-critical);
+  border-color: var(--sev-critical);
+}
+
+.ov-prio-medium {
+  color: var(--sev-high);
+  border-color: var(--sev-high);
+}
+
+.ov-prio-low {
+  color: var(--ink-faint);
+}
+
+/* ── 5 · physics evidence strip ──────────────────────────────────────────── */
+
+.ov-phys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ov-phys-item {
+  flex: 1 1 176px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 16px;
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+}
+
+.ov-phys-value {
+  font-size: var(--fs-body);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+/* ── 6 · provenance strip ────────────────────────────────────────────────── */
+
+.ov-prov {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  word-break: break-word;
+}
+
+/* ── responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 980px) {
+  .overview {
+    padding: 16px;
+  }
+
+  .ov-class-row {
+    grid-template-columns: minmax(0, 104px) 1fr 40px;
+  }
+}

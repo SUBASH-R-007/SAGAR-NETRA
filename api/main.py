@@ -173,7 +173,7 @@ def create_app(
         if suffix == ".zip":
             dest = _extract_recording_zip(dest)
 
-        job = app.state.jobs.create(dest.name)
+        job = app.state.jobs.create(dest.name, mission=mission or None)
         registry = app.state.jobs
 
         emit = None
@@ -383,6 +383,28 @@ def create_app(
         if not path.exists():
             raise HTTPException(404, "meta not generated")
         return JSONResponse(json.loads(path.read_text()))
+
+    @app.get("/api/summary")
+    def survey_summary(survey: str) -> JSONResponse:
+        """Survey-level statistics for the overview dashboard.
+
+        Reuses the ``summary`` block already written into ``contacts.json`` by
+        :func:`geoscribe.report.write_all` — area surveyed, debris density and
+        the sonar configuration are derived from ping navigation during
+        reporting, so recomputing them here would risk the two disagreeing.
+        """
+        path = _survey_outputs(survey) / "contacts.json"
+        if not path.exists():
+            raise HTTPException(404, "report not generated")
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        return JSONResponse(
+            {
+                "survey": doc.get("survey", survey),
+                "generated_at": doc.get("generated_at"),
+                "pipeline_version": doc.get("pipeline_version"),
+                **doc.get("summary", {}),
+            }
+        )
 
     # --------------------------------------------------- diff & copilot ----
 

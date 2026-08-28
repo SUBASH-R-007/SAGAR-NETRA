@@ -57,10 +57,15 @@ export const askCopilot = (question) => postJSON('/api/copilot', { question })
 
 // mode: 'batch' (default one-shot processing) or 'stream' (towed real-time
 // replay — the job snapshot then carries a recent_events detections feed).
-export async function uploadFile(file, mode = 'batch') {
+// mission: a profile name from GET /api/missions (configs/missions/*.yaml) that
+// re-weights the severity index. Batch only — the API answers 422 for
+// mission + stream — and omitted entirely when blank, so a standard survey
+// sends exactly the form it always did.
+export async function uploadFile(file, mode = 'batch', mission = '') {
   const form = new FormData()
   form.append('file', file)
   form.append('mode', mode)
+  if (mission) form.append('mission', mission)
   return fetch('/api/upload', { method: 'POST', body: form }).then(handle)
 }
 
@@ -81,3 +86,34 @@ export const reportUrl = (fmt, survey) =>
 
 export const waterfallUrl = (survey, raw = false) =>
   `/api/waterfall/${encodeURIComponent(survey)}${raw ? '?raw=1' : ''}`
+
+// --------------------------------------------- overview / ops / telemetry --
+
+export const fetchSummary = (survey) =>
+  getJSON(`/api/summary?survey=${encodeURIComponent(survey)}`)
+
+export const fetchHealth = () => getJSON('/api/health')
+
+export const fetchMissions = () => getJSON('/api/missions')
+
+export const fetchReviewLog = () => getJSON('/api/reviews/export')
+
+export const fetchRecoveryLog = () => getJSON('/api/recovery/log')
+
+export const fetchCrossview = (surveyA, surveyB, radiusM = 15) =>
+  getJSON(
+    `/api/crossview?survey_a=${encodeURIComponent(surveyA)}` +
+      `&survey_b=${encodeURIComponent(surveyB)}&radius_m=${radiusM}`,
+  )
+
+// review defaults to 'confirmed' server-side; pass '' to plan over every
+// contact. cluster_eps_m groups contacts into recovery zones first.
+export function fetchRoute({ survey, review = 'confirmed', clusterEpsM, startLat, startLon }) {
+  const q = new URLSearchParams()
+  if (survey) q.set('survey', survey)
+  if (review !== undefined && review !== null) q.set('review', review)
+  if (clusterEpsM) q.set('cluster_eps_m', String(clusterEpsM))
+  if (startLat !== undefined && startLat !== '') q.set('start_lat', String(startLat))
+  if (startLon !== undefined && startLon !== '') q.set('start_lon', String(startLon))
+  return getJSON(`/api/route?${q.toString()}`)
+}

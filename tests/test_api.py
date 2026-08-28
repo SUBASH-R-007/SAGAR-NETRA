@@ -136,6 +136,21 @@ def test_waterfall_and_meta(client, processed_survey) -> None:
     assert image.status_code == 200 and image.headers["content-type"] == "image/png"
 
 
+def test_survey_summary(client, processed_survey) -> None:
+    """The overview dashboard reads the report's own summary block, so the two
+    can never disagree about area surveyed or debris density."""
+    summary = client.get("/api/summary", params={"survey": processed_survey}).json()
+    assert summary["survey"] == processed_survey
+    assert summary["total_detections"] >= 1
+    assert summary["area_surveyed_sqkm"] > 0
+    assert summary["debris_density_per_sqkm"] > 0
+    assert summary["sonar_config"]["n_pings"] == 600
+    assert summary["pipeline_version"]
+
+    missing = client.get("/api/summary", params={"survey": "no-such-survey.xtf"})
+    assert missing.status_code == 404
+
+
 def test_evidence_and_thumb_served(client, processed_survey) -> None:
     contact = client.get("/api/contacts").json()["contacts"][0]
     for endpoint in ("evidence", "thumb"):

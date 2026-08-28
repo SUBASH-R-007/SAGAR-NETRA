@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchJob, fetchJobs, jobSocketUrl, uploadFile } from '../api'
+import { fetchJob, fetchJobs, fetchMissions, jobSocketUrl, uploadFile } from '../api'
+import { prettyName } from '../utils'
 
 // .sl2/.sl3 = Lowrance citizen sonar; .zip = Humminbird recording archive
 // (.DAT + .SON directory). Keep in sync with api/main.py UPLOAD_SUFFIXES.
@@ -11,8 +12,31 @@ export default function UploadRail({ onJobDone, pushToast }) {
   const [jobs, setJobs] = useState([])
   const [drag, setDrag] = useState(false)
   const [mode, setMode] = useState('batch') // 'batch' | 'stream' (live replay)
+  const [missions, setMissions] = useState([]) // [{name, description}]
+  const [missionState, setMissionState] = useState('loading') // loading|ready|error
+  const [mission, setMission] = useState('') // '' = standard survey, no profile
   const fileRef = useRef(null)
   const finishedRef = useRef(new Set())
+
+  // Disaster-mode profiles from configs/missions/*.yaml. An empty list is a
+  // legitimate answer (a deployment can ship none), so it is not an error.
+  useEffect(() => {
+    let alive = true
+    fetchMissions()
+      .then((list) => {
+        if (!alive) return
+        setMissions(Array.isArray(list) ? list : [])
+        setMissionState('ready')
+      })
+      .catch((err) => {
+        if (!alive) return
+        setMissionState('error')
+        pushToast(`Mission profiles unavailable: ${err.message}`, 'error')
+      })
+    return () => {
+      alive = false
+    }
+  }, [pushToast])
 
   useEffect(() => {
     fetchJobs()
@@ -117,24 +141,50 @@ export default function UploadRail({ onJobDone, pushToast }) {
     async (files) => {
       const file = files && files[0]
       if (!file) return
+      // The API rejects mission + stream with 422. The select is disabled in
+      // stream mode, so a stale selection is dropped rather than sent.
+      const profile = mode === 'stream' ? '' : mission
       try {
-        const { job_id: jobId } = await uploadFile(file, mode)
+        const { job_id: jobId } = await uploadFile(file, mode, profile)
         pushToast(
-          `Uploaded ${file.name} — ${mode === 'stream' ? 'live stream' : 'processing'} started`,
+          `Uploaded ${file.name} — ${mode === 'stream' ? 'live stream' : 'processing'} started` +
+            (profile ? ` under the ${prettyName(profile)} profile` : ''),
           'ok',
         )
         upsert({
           id: jobId, status: 'queued', stage: 'queued', fraction: 0, message: file.name, mode,
+          mission: profile || null,
         })
         track(jobId)
       } catch (err) {
         pushToast(`Upload failed: ${err.message}`, 'error')
       }
     },
-    [mode, pushToast, track, upsert],
+    [mission, mode, pushToast, track, upsert],
   )
 
   const pct = (j) => Math.round((j.fraction || 0) * 100)
+
+  // A profile only reaches the API in batch mode; the select is locked
+  // otherwise, and every lock state says why in the caption below it.
+  const missionLocked =
+    mode === 'stream' || missionState !== 'ready' || missions.length === 0
+  const selected = missions.find((m) => m.name === mission)
+  let missionCaption
+  if (mode === 'stream') {
+    missionCaption = 'Mission profiles apply to batch processing only — a live stream is'
+      + ' replayed ping by ping and cannot be re-ranked mid-run.'
+  } else if (missionState === 'loading') {
+    missionCaption = 'Loading mission profiles…'
+  } else if (missionState === 'error') {
+    missionCaption = 'Mission profiles could not be read — uploads run the standard survey.'
+  } else if (missions.length === 0) {
+    missionCaption = 'No mission profiles installed on this deployment.'
+  } else if (selected) {
+    missionCaption = selected.description
+  } else {
+    missionCaption = 'Default hazard weighting — no mission re-ranking applied.'
+  }
 
   return (
     <aside className="rail">
@@ -176,6 +226,37 @@ export default function UploadRail({ onJobDone, pushToast }) {
             }}
           />
         </div>
+        <div className="rail-field">
+          <label className="ctl-label" htmlFor="mission-profile">
+            Mission profile
+          </label>
+          <select
+            id="mission-profile"
+            value={mission}
+            disabled={missionLocked}
+            aria-describedby="mission-profile-note"
+            onChange={(e) => setMission(e.target.value)}
+          >
+            <option value="" title="default hazard weighting, no mission re-ranking">
+              Standard survey
+            </option>
+            {/* Uppercased so the SAR acronym reads correctly and the control
+                matches the console's label idiom — no name table, just the
+                API's own profile id with its underscores opened out. */}
+            {missions.map((m) => (
+              <option key={m.name} value={m.name} title={m.description || undefined}>
+                {prettyName(m.name).toUpperCase()}
+              </option>
+            ))}
+          </select>
+          <p
+            id="mission-profile-note"
+            className={missionState === 'error' ? 'rail-caption warn' : 'rail-caption'}
+          >
+            {missionCaption}
+          </p>
+        </div>
+
         <div className="seg" role="radiogroup" aria-label="processing mode">
           {['batch', 'stream'].map((m) => (
             <button
@@ -228,6 +309,12 @@ export default function UploadRail({ onJobDone, pushToast }) {
               )}
               {j.status === 'error' && (
                 <div className="job-sub err-text">{j.error || j.message || 'failed'}</div>
+              )}
+              {j.mission && (
+                <div className="job-sub job-mission">
+                  <span className="ctl-label">Mission</span>
+                  <span className="mono">{prettyName(j.mission).toUpperCase()}</span>
+                </div>
               )}
               {j.mode === 'stream' && (j.recent_events || []).some((e) => e.type === 'contact') && (
                 <div className="live-feed">

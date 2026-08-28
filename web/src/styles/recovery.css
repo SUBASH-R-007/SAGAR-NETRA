@@ -1,0 +1,174 @@
+/* ============================================================================
+   RECOVERY MISSION PLANNER (RecoveryPlanner.jsx)
+
+   Tokens, tables, tags, buttons, stats, empty states and Leaflet chrome all
+   come from styles.css — this sheet only lays out the view and draws the two
+   marks the shared sheet has no class for (the planned-track legend rule and
+   the vessel-start square). DESIGN.md v2 holds: hairlines not shadows,
+   radius <= 2px, navy is structure (the planned track), the severity ramp is
+   status, no gradients, no glow, no emoji.
+   ========================================================================== */
+
+/* ── shell ───────────────────────────────────────────────────────────────── */
+
+.rp {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* same hairline strip as the other view toolbars (.diff-toolbar et al.) */
+.rp-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper);
+  flex-shrink: 0;
+}
+
+/* vessel-start cluster: label + lat + lon + fill button travel together */
+.rp-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rp-coord {
+  width: 104px;
+}
+
+.rp-toolbar .num-input:disabled {
+  opacity: 0.45;
+  background: var(--well);
+}
+
+/* ── captions & progress ─────────────────────────────────────────────────── */
+
+.rp-caption {
+  flex: none;
+  max-width: 92ch;
+  padding: 8px 24px 0;
+  font-size: var(--fs-detail);
+  color: var(--ink-dim);
+}
+
+.rp-zones .rp-caption {
+  padding: 0;
+}
+
+/* live region: always in the DOM so the message is announced, but it takes
+   no space until there is one */
+.rp-status {
+  flex: none;
+  padding: 16px 24px 0;
+  font-size: var(--fs-mono);
+  color: var(--ink-dim);
+}
+
+.rp-status:empty {
+  display: none;
+}
+
+/* ── results ─────────────────────────────────────────────────────────────── */
+
+.rp-result {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 24px;
+}
+
+.rp-stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── map well ────────────────────────────────────────────────────────────── */
+
+.rp-map {
+  position: relative;
+  flex: none;
+  height: 380px;
+  border: 1px solid var(--hairline-2);
+  background: var(--well);
+}
+
+.rp-map .map-legend {
+  top: 8px;
+  right: 8px;
+}
+
+/* planned track — a solid navy rule, matching the Polyline on the map */
+.rp-legend-track {
+  border-top: 2px solid var(--navy);
+}
+
+/* vessel start — hollow square, the way a fix is drawn on a paper chart */
+.rp-legend-start {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border: 2px solid var(--ink);
+  background: var(--panel);
+}
+
+/* permanent sequence tooltips: tight, mono, unobtrusive over imagery */
+.leaflet-tooltip.rp-tip {
+  padding: 0 4px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.rp-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+  font-size: var(--fs-mono);
+}
+
+/* ── tables ──────────────────────────────────────────────────────────────── */
+
+.rp-zones,
+.rp-waypoints {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* the printed crew list flows at full length — the view scrolls, not the table */
+.rp-waypoints .table-scroll {
+  flex: none;
+  border: 1px solid var(--hairline);
+}
+
+/* the vessel's own position: a ledger line before waypoint 1, not a target */
+.rp-waypoints tr.rp-start-row td {
+  background: var(--well);
+  color: var(--ink-dim);
+}
+
+/* ── responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 980px) {
+  .rp-toolbar,
+  .rp-caption,
+  .rp-status {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .rp-result {
+    padding: 16px;
+  }
+}
