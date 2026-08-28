@@ -210,3 +210,38 @@
     padding: 16px;
   }
 }
+
+/* --- sonar geometry form (image uploads) ---------------------------------
+   Shown only while an image is staged: a picture of the seabed carries no
+   navigation, so the operator states what the sonar was set to before the
+   pipeline can correct range, measure height or geotag anything. */
+.geom-form {
+  border: 1px solid var(--hairline-2);
+  border-top: 2px solid var(--saffron);
+  background: var(--panel);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.geom-title {
+  font-size: var(--fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0;
+}
+.geom-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.geom-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.geom-cell .num-input { width: 100%; }
+.geom-actions { display: flex; gap: 8px; }

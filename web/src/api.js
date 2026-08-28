@@ -61,11 +61,18 @@ export const askCopilot = (question) => postJSON('/api/copilot', { question })
 // re-weights the severity index. Batch only — the API answers 422 for
 // mission + stream — and omitted entirely when blank, so a standard survey
 // sends exactly the form it always did.
-export async function uploadFile(file, mode = 'batch', mission = '') {
+export async function uploadFile(file, mode = 'batch', mission = '', geometry = null) {
   const form = new FormData()
   form.append('file', file)
   form.append('mode', mode)
   if (mission) form.append('mission', mission)
+  // Declared sonar geometry — only nav-less formats (images) need it, and the
+  // API ignores it for survey logs that carry their own navigation.
+  if (geometry) {
+    for (const [k, v] of Object.entries(geometry)) {
+      if (v !== null && v !== undefined && v !== '') form.append(k, String(v))
+    }
+  }
   return fetch('/api/upload', { method: 'POST', body: form }).then(handle)
 }
 

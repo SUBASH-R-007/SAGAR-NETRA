@@ -231,6 +231,17 @@ def preprocess(
     cfg = _deep_merge(DEFAULTS, config or {})
     is_mosaic = bool(pa.meta.get("ground_range"))
 
+    # A source that is already gain-corrected must not be gain-corrected again.
+    # A display waterfall (PNG/JPG) has had its range falloff flattened and its
+    # contrast stretched before it was ever written to disk; running EGN over
+    # it a second time invents range structure that was not in the water, and
+    # the open-set anomaly brain — whose threshold is calibrated on singly
+    # normalised imagery — then reads that structure as debris. Measured on the
+    # bundled waterfall: 92 spurious anomalies with EGN on, 0 with it off.
+    # An explicit egn.enabled in the caller's config always wins.
+    if pa.meta.get("gain_normalized") and "enabled" not in (config or {}).get("egn", {}):
+        cfg = _deep_merge(cfg, {"egn": {"enabled": False}})
+
     stage_names: list[str] = []
     if not is_mosaic:
         stage_names.append("track_bottom")

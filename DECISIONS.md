@@ -187,3 +187,29 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
    different lengths are also equalised slightly differently. Training scenes span 700–1100 pings
    so the deployed models see a narrow band of this, but expressing the CLAHE grid in pixels
    rather than cell counts is the principled long-term fix.
+
+## Image-upload round
+
+1. **A nav-less format needs declared geometry, not a guess.** A survey log records altitude,
+   range and position per ping; an image records none of it, so uploading a PNG failed at
+   slant-range correction ("needs finite positive altitude for every ping"). The operator now
+   states what the sonar was set to at upload time (`altitude_m`, `range_m` required; position,
+   heading and tow depth optional) and the full chain runs: slant correction, height from shadow
+   and WGS-84 geotagging. `range_m <= altitude_m` is rejected — a swath only exists beyond the
+   first bottom return.
+2. **The synthesised track is labelled as a fiction.** With a declared start position the parser
+   lays a straight constant-heading line so contacts geotag correctly relative to it, and records
+   `meta["nav_source"] = "declared-line"`. It positions detections correctly for a benchmark image
+   or a demo; it is not recorded navigation and the metadata says so.
+3. **A display image must not be gain-normalised twice.** A waterfall written for display has
+   already had its range falloff flattened and its contrast stretched. Running EGN over it again
+   invents range structure that was never in the water, and the open-set anomaly brain — calibrated
+   on singly normalised imagery — reads that structure as debris. Measured on the bundled
+   waterfall: **92 spurious anomalies with EGN on, 0 with it off**; total contacts fell from 105 to
+   13, all named classes, with heights matching the log path (wreck 2.99 m, container 2.36 m).
+   The image parser therefore declares `gain_normalized=True` by default and `preprocess` skips
+   EGN for such sources — an explicit `egn.enabled` from the caller always wins, and an export of
+   raw uncorrected amplitudes can pass `gain_normalized=False`.
+4. **Same failure class as the streaming flood.** Both were the anomaly brain reacting to imagery
+   normalised differently from its calibration set, not to debris. Worth remembering whenever a
+   new input path is added: match the normalisation the brains were calibrated on, or recalibrate.

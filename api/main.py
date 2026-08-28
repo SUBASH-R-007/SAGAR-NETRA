@@ -66,6 +66,11 @@ WS_POLL_S = 0.25
 #: so a reconnecting dashboard replays the freshest detections, not megabytes).
 RECENT_EVENTS_CAP = 50
 UPLOAD_MODES = ("batch", "stream")
+#: Formats that record no navigation. For these the operator declares the
+#: survey geometry at upload time (the sonar's range/altitude setting and
+#: where the line ran); without it slant-range correction, height-from-shadow
+#: and geotagging have nothing to work from.
+GEOMETRY_REQUIRED_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 
 
 class ReviewRequest(BaseModel):
@@ -151,6 +156,13 @@ def create_app(
         file: UploadFile = File(...),  # noqa: B008 - FastAPI idiom
         mission: str | None = Form(None),  # noqa: B008 - FastAPI idiom
         mode: str = Form("batch"),  # noqa: B008 - FastAPI idiom
+        # Declared survey geometry — used only by nav-less formats (images).
+        altitude_m: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        range_m: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        lat: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        lon: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        heading_deg: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        sensor_depth_m: float | None = Form(None),  # noqa: B008 - FastAPI idiom
     ) -> dict[str, str]:
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in UPLOAD_SUFFIXES:
@@ -164,6 +176,36 @@ def create_app(
                 load_mission(mission)
             except KeyError as exc:
                 raise HTTPException(422, str(exc.args[0])) from exc
+        parser_kwargs: dict[str, Any] = {}
+        if suffix in GEOMETRY_REQUIRED_SUFFIXES:
+            if altitude_m is None or range_m is None:
+                raise HTTPException(
+                    422,
+                    f"{suffix} carries no navigation: altitude_m and range_m are "
+                    "required so slant-range correction and height-from-shadow "
+                    "have geometry to work from",
+                )
+            if altitude_m <= 0 or range_m <= 0:
+                raise HTTPException(422, "altitude_m and range_m must be positive")
+            if range_m <= altitude_m:
+                raise HTTPException(
+                    422,
+                    f"range_m ({range_m}) must exceed altitude_m ({altitude_m}): a "
+                    "swath only exists beyond the first bottom return",
+                )
+            parser_kwargs = {
+                "altitude_m": float(altitude_m),
+                "slant_range_m": float(range_m),
+                "start_time": time.time(),
+            }
+            if sensor_depth_m is not None:
+                parser_kwargs["sensor_depth_m"] = float(sensor_depth_m)
+            if lat is not None and lon is not None:
+                parser_kwargs["lat"] = float(lat)
+                parser_kwargs["lon"] = float(lon)
+            if heading_deg is not None:
+                parser_kwargs["heading_deg"] = float(heading_deg)
+
         app.state.upload_dir.mkdir(parents=True, exist_ok=True)
         dest = app.state.upload_dir / Path(file.filename).name
         with dest.open("wb") as fh:
@@ -221,6 +263,7 @@ def create_app(
                         detector_factory=app.state.detector_factory,
                         output_root=app.state.output_root,
                         mission=mission or None,
+                        parser_kwargs=parser_kwargs or None,
                     )
                 elapsed = time.perf_counter() - t0
                 app.state.tiles_per_s_last = round(
