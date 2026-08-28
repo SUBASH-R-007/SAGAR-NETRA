@@ -345,6 +345,72 @@ backstop for single-model operation.
 > as the result. The path to real-data numbers is `scripts/download_datasets.py` plus the
 > active-learning flywheel.
 
+### Against a classical baseline — an honest negative result
+
+The ablation above measures SAGAR-NETRA against *itself*. It cannot answer the question a
+reviewer asks first: **is any of this better than what survey teams already run?** So we built
+the comparator — [`tridentnet/baseline.py`](tridentnet/baseline.py), a faithful reimplementation
+of the threshold-and-blob CAD scheme that side-scan software used before learned detectors — and
+scored it through the same matcher and the same metric code.
+
+From [`docs/baseline_comparison.md`](docs/baseline_comparison.md): 16 held-out scenes, 66 truth
+boxes, 0.205 km². Hyperparameters for **both** families are selected on a separate 8-scene tuning
+split (seed base 11000) and applied unchanged. Scoring is localization-only, because a blob
+detector emits no class and penalising it for that would be scoring a task it never attempts.
+
+| Method | P | R | F1 | PR-AUC | FP/km² | Classifies? |
+|---|---|---|---|---|---|---|
+| Classical: threshold + blob | 0.904 | 0.712 | 0.797 | **0.917** | **24.3** | no |
+| Classical: + shadow gate | 0.841 | 0.803 | **0.822** | 0.828 | 48.7 | no |
+| SAGAR-NETRA: detector only, no physics | 0.171 | 0.652 | 0.270 | 0.569 | 1017.5 | yes |
+| SAGAR-NETRA: full stack *(shipped 50% floor)* | 0.759 | 0.667 | 0.710 | 0.738 | 68.2 | yes |
+
+![Classical baseline vs SAGAR-NETRA](docs/images/comparison.png)
+
+**The tuned classical baseline beats the deployed stack at localization on this benchmark.** We
+publish that rather than hide it. Three things are worth understanding about why.
+
+**1. The benchmark is confounded, and we measured by how much.** In the scene simulator
+`rock_cluster` — the only natural clutter class — has reflectivity **2.0–3.0**, the lowest of any
+class, while most man-made targets sit at **4.0–8.0**. Brightness is therefore very nearly the
+man-made/natural label, and a brightness threshold is handed the answer by the data generator.
+Real sonar offers no such gap. [`docs/clutter_sweep.md`](docs/clutter_sweep.md) removes the
+shortcut by giving decoy rocks the reflectivity of real targets, changing nothing else:
+
+![Clutter sweep](docs/images/clutter.png)
+
+| Precision lost, +0 → +24 decoy rocks | Classical | SAGAR-NETRA |
+|---|---|---|
+| `native` — brightness gap intact | −0.630 | −0.618 |
+| `matched` — gap removed | **−0.734** | **−0.632** |
+| **Cost of removing the shortcut** | **−0.104** | **−0.014** |
+
+Removing the shortcut costs the classical detector **7× more precision** than it costs us —
+consistent with a method reading shape and shadow rather than amplitude. It explains part of the
+baseline's lead. It does not erase it: classical still holds higher absolute precision at every
+clutter level.
+
+**2. One result in that table is immune to the confound**, because both rows score *identical*
+detections from the same detector: the physics and verifier stages take false alarms from
+**1018 to 68 per km² — a 15× cut** — at comparable recall. That is the ablation result, and it
+stands whatever the baseline does.
+
+Rows (1) and (2) are *not* a shadow-gate ablation — each variant is tuned independently and they
+land on different `k_sigma`. Ablated properly, with only the gate changing, the shadow
+requirement raises precision **where detection is hard** (+0.13 at k=1, +0.23 at k=3) but costs
+recall, and at the permissive thresholds this baseline prefers it is net-negative on F1
+(0.909 → 0.848 at k=0.25). The cue is real but conditional; we do not claim it as a free win.
+
+**3. What the baseline cannot do at any threshold** is the `Classifies?` column. It localizes.
+It cannot name a class, invert shadow length into height, score severity against habitat and
+shipping layers, or populate a report. That gap is architectural, not a matter of tuning.
+
+The likeliest reason the learned stack does not pull ahead is that a clean simulated seabed of
+high-contrast targets is exactly the regime a tuned threshold is best at, compounded by a small
+CPU-trained detector (mAP50 0.656). Settling it needs real survey data, not a louder synthetic
+table — which is what [`scripts/download_datasets.py`](scripts/download_datasets.py) and the
+active-learning loop exist for.
+
 ### Throughput ([`edge/benchmark.md`](edge/benchmark.md), CPU only)
 
 | Stage | ms / tile | Throughput |
@@ -521,15 +587,20 @@ Stated plainly, because a prototype that hides its edges is not trustworthy:
 1. **Model metrics are on synthetic held-out data.** The blueprint target of ≥0.90 mAP@50 refers to
    published results on real KLSG/SCTD benchmarks after full training campaigns. Our 0.656 is
    honest closed-world synthetic performance. The real-data path is scripted, not yet run.
-2. **INT8 is a size win here, not a speed win** — the speed claim needs Jetson TensorRT hardware.
-3. **Jetson and Hailo paths are documented runbooks**, not executed measurements — we do not have
+2. **A tuned classical CAD baseline outperforms us on the synthetic benchmark** — F1 0.822 vs
+   0.710, localization-only. It is published in section 6 rather than hidden. Part of the gap is
+   a simulator confound we quantified (`docs/clutter_sweep.md`); part is a small CPU-trained
+   detector. *"SAGAR-NETRA beats classical sonar software"* is **not** a claim this repository
+   supports.
+3. **INT8 is a size win here, not a speed win** — the speed claim needs Jetson TensorRT hardware.
+4. **Jetson and Hailo paths are documented runbooks**, not executed measurements — we do not have
    the devices.
-4. **The State Emblem is not used** (it is legally restricted). The header renders an Ashoka Chakra,
+5. **The State Emblem is not used** (it is legally restricted). The header renders an Ashoka Chakra,
    with a marked slot for an official asset if the submission is entitled to one.
-5. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled
+6. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled
    as such — not official maritime boundaries.
-6. **Not an official Government of India website** — the console states this in its footer.
-7. **Deliberate non-goals**, each with a written rationale in `DECISIONS.md`: OpenMax fusion
+7. **Not an official Government of India website** — the console states this in its footer.
+8. **Deliberate non-goals**, each with a written rationale in `DECISIONS.md`: OpenMax fusion
    (Brain C + consensus covers open-set), MC-dropout (YOLOv8n has no dropout layers), and
    diffusion/CycleGAN synthesis (needs GPUs and real style targets).
 

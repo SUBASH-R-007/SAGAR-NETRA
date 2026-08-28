@@ -213,3 +213,81 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
 4. **Same failure class as the streaming flood.** Both were the anomaly brain reacting to imagery
    normalised differently from its calibration set, not to debris. Worth remembering whenever a
    new input path is added: match the normalisation the brains were calibrated on, or recalibrate.
+
+## Baseline-comparison round
+
+1. **The ablation ladder had no floor that wasn't us.** Every published number compared
+   SAGAR-NETRA against SAGAR-NETRA — how much each stage adds. That cannot answer the first
+   question a reviewer asks, which is whether any of it beats what survey teams already run.
+   `tridentnet/baseline.py` adds a faithful classical CAD baseline (per-range-column robust
+   background, threshold at `median + k*sigma`, morphological opening, connected components,
+   area/aspect filters, optional shadow gate) and `scripts/eval_baseline.py` scores it against
+   the deployed stack through the same matcher, the same metric arithmetic and the same scenes.
+2. **The baseline detects on gain-corrected, pre-CLAHE imagery.** The first draft ran it on the
+   enhanced image the learned brains see, where it looked terrible. Measured cause: true targets
+   peak at **8–30 sigma** above the robust per-column background on `ground_raw` but only
+   **1.7–3.2 sigma** after CLAHE, because local contrast equalization compresses exactly the
+   global separation a fixed threshold depends on. Scoring it there would have been a strawman,
+   so `ClassicalConfig.use_raw_imagery` defaults to True.
+3. **Hyperparameters are selected on a separate split, for both families.** An earlier draft
+   swept the baseline's two knobs directly on the evaluation set and reported the best — and the
+   baseline duly "won". That is test-set fitting: with a few dozen truth boxes it manufactures a
+   winner out of noise. Selection now happens on seed base 11000 (disjoint from training seed 0,
+   calibration 9000 and evaluation 12000) and is applied unchanged to the evaluation scenes.
+4. **The simulator encodes the class label in brightness, which confounds the whole comparison.**
+   `rock_cluster` — the only natural clutter class — has reflectivity **2.0–3.0**, the lowest of
+   any class, while most man-made targets sit at **4.0–8.0**. A detector that thresholds on
+   brightness is handed the man-made/natural answer by the data generator. Real sonar has no such
+   gap; a boulder and a steel drum can return comparable amplitude, which is the entire reason
+   the problem needs shape, shadow geometry and learning. Any brightness-threshold-versus-learned
+   comparison on this simulator is therefore structurally biased toward the threshold.
+5. **So clutter is swept under two conditions.** `scripts/eval_clutter.py` holds the debris field
+   fixed and layers nested decoy rock clusters, under `native` (catalogue reflectivity, gap
+   intact) and `matched` (each decoy borrows a real target's reflectivity, gap removed). Every
+   rock is a false positive by construction, so the sweep measures one thing: how fast precision
+   falls as target-shaped natural objects accumulate, with and without the shortcut.
+6. **The two conditions must differ in brightness and nothing else.** Branching on an RNG draw
+   (`rng.uniform` for native, `rng.integers` for matched) consumed different amounts of the bit
+   stream and silently moved every subsequent rock — two unrelated experiments wearing the same
+   label, and the failure produces perfectly plausible tables. Both draws now happen in both
+   modes, in a fixed order; `tests/test_clutter.py::test_modes_place_identical_rocks` pins it.
+7. **The threshold sweep is vectorized because the honest grid is wide.** Widening `k_sigma` down
+   to 0.25 (so the selected value is interior, not clamped at an endpoint) hands the sweep tens of
+   thousands of blobs, and the obvious re-score-at-every-threshold loop is O(n^2) — one run hung
+   in it. Now O(n log n) via a cumulative-TP scan, verified identical to the loop on 300
+   randomized label streams.
+8. **Two suspected handicaps on the baseline were checked and cleared by measurement, not
+   assertion.** The aspect-ratio filter is *inert*: identical F1, precision, recall and FP/km²
+   from `max_aspect=6` through effectively infinite. The area cap was not inert but was close —
+   the largest truth box in the held-out set is an aircraft at ~19.5k px against a 20k cap, one
+   bad seed from silently dropping a real target and charging the miss to the baseline — so it
+   was raised to 100k.
+9. **The confound is real and measured, but it does not rescue the result.** The clutter sweep
+   (12 scenes, 55 man-made truths, nested decoys) shows the classical baseline is far more
+   dependent on the brightness shortcut than the learned stack is. Precision lost between +0 and
+   +24 decoy rocks: classical **-0.630 native vs -0.734 matched**, SAGAR-NETRA **-0.618 native vs
+   -0.632 matched**. Removing the shortcut costs the classical detector an extra **0.104** of
+   precision and costs SAGAR-NETRA **0.014** — roughly a sevenfold difference in sensitivity,
+   which is what you would expect from a method that reads shape and shadow rather than
+   amplitude. But the classical baseline still holds higher absolute precision at every clutter
+   level in both conditions, so the confound explains part of its lead and does not erase it.
+10. **What this licenses us to claim, and what it does not.** On this synthetic benchmark a tuned
+    classical CAD baseline matches or beats the deployed stack at localization, and no amount of
+    reframing changes that. "SAGAR-NETRA outperforms classical sonar software" is therefore **not
+    a supported claim** and must not be presented as one. Three things remain fully supported and
+    are unaffected by the confound, because they compare rows scored from identical detections:
+    the physics and verifier stages cut false alarms roughly **15x** (1018 -> 68 per km²) at
+    comparable recall, both rows scoring identical detections; and the baseline cannot classify,
+    estimate height, score severity or produce a report at any threshold. The likeliest
+    reason the learned stack does not pull ahead is that a clean simulated seabed of
+    high-contrast targets is the regime a tuned threshold is best at, compounded by a small
+    CPU-trained detector (mAP50 0.656, precision 0.552). Settling it needs real survey data, not
+    a louder synthetic table — which is exactly what the dataset and active-learning path is for.
+11. **The published rows (1) and (2) are not a shadow-gate ablation, and an early draft wrongly
+    read them as one.** Each classical variant is tuned independently, so they land on different
+    `k_sigma` and differ in two things at once. Ablated properly — same k, only the gate moving —
+    the shadow requirement raises precision **where detection is hard** (+0.128 at k=1, +0.229 at
+    k=3) but costs recall, and at the permissive thresholds the baseline actually prefers it is
+    net-negative on F1 (0.909 -> 0.848 at k=0.25, 0.899 -> 0.812 at k=0.05). The shadow cue is
+    real and conditional. Claiming it as independent corroboration of Stage-1 would have been
+    unsupported, and the claim was removed from the README and the generated table.

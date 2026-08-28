@@ -296,6 +296,56 @@ def _write_markdown(
     return out_path
 
 
+@dataclass(frozen=True)
+class Scene:
+    """One rendered held-out scene, with its truth boxes and surveyed area."""
+
+    index: int
+    cfg: SceneConfig
+    pre: PreprocessResult
+    truths: list[Detection]
+    area_km2: float
+
+
+def iter_scenes(
+    n_scenes: int,
+    seed_base: int = SEED_BASE,
+    *,
+    shadow_pad_cols: int = 3,
+    n_pings_range: tuple[int, int] = (500, 800),
+    n_samples: int = 1024,
+    slant_range_range: tuple[float, float] = (40.0, 60.0),
+    altitude_range: tuple[float, float] = (6.0, 12.0),
+):
+    """Render the held-out scene set, one scene at a time.
+
+    Shared by the ablation and the classical-baseline comparison so both are
+    measured on *the same seabed*. The draw order off the seeded generator is
+    part of the contract: change it and previously published tables stop being
+    reproducible, which is why both callers go through this one function
+    instead of keeping their own copy of the loop.
+    """
+    rng = np.random.default_rng(seed_base)
+    for i in range(n_scenes):
+        cfg = SceneConfig(
+            n_pings=int(rng.integers(*n_pings_range)),
+            n_samples=int(n_samples),
+            slant_range=float(rng.uniform(*slant_range_range)),
+            altitude=float(rng.uniform(*altitude_range)),
+            seed=seed_base + i,
+        )
+        targets = random_targets(cfg, rng)
+        pa, targets = make_scene(cfg, targets)
+        pre = preprocess(pa)
+        yield Scene(
+            index=i,
+            cfg=cfg,
+            pre=pre,
+            truths=_truth_boxes(pre, targets, cfg, shadow_pad_cols),
+            area_km2=float(survey_stats(pre)["area_surveyed_sqkm"]),
+        )
+
+
 def run_eval(
     n_scenes: int = 8,
     seed_base: int = SEED_BASE,
@@ -328,20 +378,17 @@ def run_eval(
     labels: dict[str, list[tuple[float, bool]]] = {key: [] for key, _ in CONFIGS}
     n_truth = 0
     area_km2 = 0.0
-    rng = np.random.default_rng(seed_base)
-    for i in range(n_scenes):
-        cfg = SceneConfig(
-            n_pings=int(rng.integers(*n_pings_range)),
-            n_samples=int(n_samples),
-            slant_range=float(rng.uniform(*slant_range_range)),
-            altitude=float(rng.uniform(*altitude_range)),
-            seed=seed_base + i,
-        )
-        targets = random_targets(cfg, rng)
-        pa, targets = make_scene(cfg, targets)
-        pre = preprocess(pa)
-        area_km2 += float(survey_stats(pre)["area_surveyed_sqkm"])
-        truths = _truth_boxes(pre, targets, cfg, shadow_pad_cols)
+    for scene in iter_scenes(
+        n_scenes,
+        seed_base,
+        shadow_pad_cols=shadow_pad_cols,
+        n_pings_range=n_pings_range,
+        n_samples=n_samples,
+        slant_range_range=slant_range_range,
+        altitude_range=altitude_range,
+    ):
+        i, pre, truths = scene.index, scene.pre, scene.truths
+        area_km2 += scene.area_km2
         n_truth += len(truths)
 
         # Detect ONCE; every configuration re-scores these exact boxes.
