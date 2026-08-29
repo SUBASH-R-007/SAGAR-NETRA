@@ -112,9 +112,14 @@ Five layers, each independently testable, each with its own config file and test
 ```bash
 python -m venv .venv
 .venv/Scripts/pip install -e ".[dev,ml,api,geo]"
+cd web && npm install && npm run build && cd ..   # dashboard (generated, not tracked)
 .venv/Scripts/python scripts/make_sample_xtf.py   # deterministic bundled sample survey
 .venv/Scripts/python scripts/demo.py --serve      # full pipeline, console at :8000
 ```
+
+`web/dist` is a build artefact and is not committed, so the frontend step is required on
+a fresh clone: without it the API serves but the console does not. `demo.py --serve` says
+so rather than opening a blank page.
 
 Or containerised: `docker compose up --build` (add `--profile postgis` for a shore station).
 

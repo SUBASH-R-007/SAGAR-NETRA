@@ -119,6 +119,20 @@ def main() -> None:
     print(f"  imagery  {summary['outputs_dir']}\\waterfall.png (+ evidence cards)")
 
     if args.serve:
+        # The API mounts web/dist only when it exists, and says nothing when it
+        # does not, so a fresh clone would serve a bare API and look broken.
+        # web/dist is generated rather than tracked, which makes this the normal
+        # state of a first checkout, not an edge case.
+        dist = REPO_ROOT / "web" / "dist"
+        if not (dist / "index.html").is_file():
+            print()
+            print("The dashboard has not been built, so only the JSON API would serve.")
+            print("Build it once (needs Node):")
+            print()
+            print("  cd web && npm install && npm run build")
+            print()
+            print("Continuing with the API only: /api/... works, the console will not.")
+
         print(f"\nStarting DRISHTI console at http://127.0.0.1:{args.port} — Ctrl+C to stop")
         import uvicorn
 
