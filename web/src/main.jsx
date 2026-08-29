@@ -17,6 +17,7 @@ import './styles.css'
 import './styles/overview.css'
 import './styles/recovery.css'
 import './styles/system.css'
+import './styles/lab.css'
 import './styles/enhancements.css'
 import App from './App'
 

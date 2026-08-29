@@ -9,8 +9,8 @@ Smart India Hackathon 2026 · Problem Statement **26057** · Ministry of Earth S
 
 | | |
 |---|---|
-| **Status** | Complete end-to-end prototype, all 8 milestones + 2 hardening rounds |
-| **Tests** | **290 passing**, 0 failures (52 s), `ruff` clean across 8 packages |
+| **Status** | Complete end-to-end prototype, all 8 milestones + 7 hardening rounds |
+| **Tests** | **361 passing**, 0 failures, `ruff` clean across 8 packages |
 | **Code** | 15,813 lines Python (9,854 library) · 3,395 lines frontend · 112 Python modules |
 | **Cloud dependency** | **None.** Zero network calls at inference |
 | **Input formats** | XTF · EdgeTech JSF · Lowrance SL2/SL3 · Humminbird DAT/SON · GeoTIFF · PNG/JPG |
@@ -331,6 +331,28 @@ A displayed "70%" now means roughly 70% of such detections are real.*
   density per km²**.
 - **Recovery routing** — geodesic union-find clustering into recovery zones, then nearest-neighbour
   + 2-opt ordering within and across clusters.
+
+### Physics Lab — the acoustics, made interactive
+
+A console tab with three live models. Each one calls the **deployed backend** —
+`sonar_core.geometry` and `physicheck.shadow` — rather than re-deriving the formulas in
+JavaScript, so the lab and the pipeline cannot drift apart.
+
+| Panel | What a visitor can do | Endpoint |
+|---|---|---|
+| **Height from shadow** | Drag altitude / height / range; watch the ray diagram redraw, the shadow forward-model, and the deployed estimator invert it back to the height it started from | `POST /api/physics/shadow` |
+| **What the sonar can resolve** | Change beam width and pulse length; see across-track stay flat and along-track climb with range | `GET /api/physics/geometry` |
+| **Build a seabed** | Place objects, render them through the real L1 chain, then measure each height back from its shadow against the truth the renderer used | `POST /api/physics/simulate` |
+
+The shadow panel is the one to demo. At 10 m altitude a 2 m object throws a **5 m shadow
+— a 2.5× lever**; raise it to 4 m and the shadow reaches 13.3 m, because the gain itself
+grows with height. That is the entire argument for measuring the shadow instead of the
+object, and a judge can drive it themselves.
+
+The scene builder is honest by construction: the measured column is allowed to disagree
+with the truth column, and the error is shown. On the shipped default scene it recovers
+three objects to a **mean absolute height error of 0.10 m** — from shadow geometry alone,
+with no model and no training.
 
 ### L5 · DRISHTI Console
 

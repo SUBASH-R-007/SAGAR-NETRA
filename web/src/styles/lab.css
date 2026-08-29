@@ -1,0 +1,394 @@
+/* ============================================================================
+   PHYSICS LAB view — interactive acoustics.
+
+   Same rules as every other sheet: tokens from styles.css, hairlines not
+   shadows, radius <= 2px, flat fills, navy = structure, saffron = the quantity
+   under test. The severity ramp is not used — nothing here is a risk, it is a
+   measurement. Figures are inline SVG so they follow the type scale and the
+   A-/A/A+ control like everything else.
+   ========================================================================== */
+
+.lab {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 16px 24px 32px;
+}
+
+.lab-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 78ch;
+}
+
+.lab-intro p {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--ink-dim);
+  line-height: 1.55;
+}
+
+/* ── panel ───────────────────────────────────────────────────────────────── */
+
+.lab-panel {
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.lab-panel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lab-panel-head h3 {
+  margin: 0;
+  font-size: var(--fs-h3, 1.05rem);
+  font-weight: 600;
+  color: var(--navy);
+  letter-spacing: 0.01em;
+}
+
+.lab-lede {
+  margin: 0;
+  max-width: 82ch;
+  font-size: var(--fs-body);
+  line-height: 1.55;
+  color: var(--ink-dim);
+}
+
+/* ── two-column body: controls | figure ──────────────────────────────────── */
+
+.lab-split {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .lab-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lab-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.lab-figure {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lab-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: var(--panel);
+}
+
+.lab-svg-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  fill: var(--ink-dim);
+}
+
+.lab-svg-label.strong {
+  fill: var(--ink);
+  font-weight: 600;
+}
+
+.lab-svg-axis {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--ink-faint);
+}
+
+.lab-formula {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  padding: 6px 8px;
+  background: var(--well);
+  border-left: 2px solid var(--navy);
+}
+
+.lab-formula-src {
+  color: var(--ink-faint);
+}
+
+/* ── sliders ─────────────────────────────────────────────────────────────── */
+
+.lab-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lab-slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.lab-slider-label {
+  font-size: var(--fs-small, 0.8125rem);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.lab-slider-value {
+  font-size: var(--fs-small, 0.8125rem);
+  color: var(--navy);
+  font-weight: 600;
+}
+
+.lab-unit {
+  color: var(--ink-faint);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+.lab-slider-hint {
+  font-size: var(--fs-micro);
+  color: var(--ink-faint);
+}
+
+.lab-slider input[type='range'] {
+  width: 100%;
+  accent-color: var(--saffron);
+  margin: 0;
+}
+
+/* ── readout ─────────────────────────────────────────────────────────────── */
+
+.lab-readout {
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.lab-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.lab-stat dt {
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lab-stat dd {
+  margin: 0;
+  font-size: var(--fs-small, 0.8125rem);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.lab-stat.emphasis dd {
+  color: var(--saffron);
+}
+
+/* ── prose callouts ──────────────────────────────────────────────────────── */
+
+.lab-insight {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--saffron-wash);
+  border-left: 2px solid var(--saffron);
+  font-size: var(--fs-small, 0.8125rem);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.lab-warn {
+  margin: 0;
+  padding: 8px 10px;
+  background: #FDF1EF;
+  border-left: 2px solid var(--error);
+  font-size: var(--fs-small, 0.8125rem);
+  color: var(--ink);
+}
+
+/* ── scene builder ───────────────────────────────────────────────────────── */
+
+.lab-scene-controls {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.lab-scene-controls .lab-slider {
+  min-width: 200px;
+  flex: 0 1 240px;
+}
+
+.lab-target-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lab-target-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 8px;
+  background: var(--well);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+}
+
+.lab-target-row select,
+.lab-target-row input {
+  font-family: var(--sans);
+  font-size: var(--fs-small, 0.8125rem);
+  padding: 3px 6px;
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.lab-target-row input[type='number'] {
+  width: 68px;
+}
+
+.lab-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.btn.tiny {
+  font-size: var(--fs-micro);
+  padding: 3px 8px;
+}
+
+.btn.tiny.add {
+  align-self: flex-start;
+}
+
+/* ── scene output ────────────────────────────────────────────────────────── */
+
+.lab-scene-out {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.lab-waterfall {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lab-waterfall img {
+  width: 100%;
+  max-height: 340px;
+  object-fit: contain;
+  object-position: top;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  background: #000;
+  image-rendering: pixelated;
+}
+
+.lab-waterfall figcaption {
+  font-size: var(--fs-micro);
+  color: var(--ink-faint);
+}
+
+.lab-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-small, 0.8125rem);
+}
+
+.lab-table th {
+  text-align: left;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  font-weight: 600;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--hairline-2);
+  white-space: nowrap;
+}
+
+.lab-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--hairline);
+  color: var(--ink);
+}
+
+.lab-table tr.natural td {
+  color: var(--ink-dim);
+}
+
+.lab-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--well);
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  color: var(--ink-dim);
+}
+
+.lab-tag.warn {
+  background: var(--saffron-wash);
+  border-color: var(--saffron);
+  color: var(--saffron);
+}
+
+.err-ok {
+  color: var(--ok);
+}
+
+.err-hi {
+  color: var(--error);
+  font-weight: 600;
+}

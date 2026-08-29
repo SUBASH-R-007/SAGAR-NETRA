@@ -330,3 +330,30 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
     a false positive by construction (4 of 14 on the sample survey). The *geometry* is tested; the
     flag's precision can only be assessed on real data, and it is presented as "check this",
     never as "this is multipath".
+
+## Physics Lab round
+
+16. **The lab calls the deployed physics; it does not re-derive it in the browser.** Every slider
+    in the Physics Lab hits `sonar_core.geometry` or `physicheck.shadow` through
+    `api/physics_lab.py`. A JavaScript copy of `H = A*(x_end - x_far)/x_end` would have been
+    faster and offline-friendlier, and it would have been wrong the first time either formula
+    changed — with no test to catch it, because the copy would keep looking plausible. The cost
+    is a round trip per slider move, debounced to 120 ms; the benefit is that the demo cannot
+    lie about what the product does.
+17. **The scene simulator runs no detector, on purpose.** It renders a user-built seabed through
+    the real L1 chain and then measures each object's height from its shadow, reporting that
+    against the truth the renderer used. Inserting a model between the two would make any
+    disagreement ambiguous — was it the physics or the network? — and the detector is the weakest
+    link in the stack (mAP50 0.656 on 172 synthetic tiles). Detection has its own tabs; this
+    panel isolates the part that works.
+18. **The measured column is allowed to disagree with the truth column, and the error is shown.**
+    A demo that only ever displays agreement is a demo nobody should believe. On the shipped
+    default scene the mean absolute height error is 0.10 m across three objects; when a target is
+    placed where no shadow resolves, the row reads a dash rather than a fabricated number.
+19. **Placements that cannot be imaged are corrected, not rendered as a puzzle.** An object past
+    the usable swath, taller than the towfish, or outside the ping range is clamped into the
+    valid envelope and the panel says the swath limit out loud. The alternative — rendering an
+    empty scene and letting the visitor guess why — teaches nothing about the geometry.
+20. **`model_dump()` writes optional fields as explicit `None`, so `dict.get(key, default)` never
+    fires.** The first simulate request crashed on `float(None)` because every unset target
+    dimension arrived as a present-but-null key. `_pick()` now treats missing and null alike.

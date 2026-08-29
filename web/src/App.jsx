@@ -3,6 +3,7 @@ import { fetchContacts, fetchSurveys } from './api'
 import Chakra from './components/Chakra'
 import Copilot from './components/Copilot'
 import Overview from './components/Overview'
+import PhysicsLab from './components/PhysicsLab'
 import RecoveryPlanner from './components/RecoveryPlanner'
 import SystemStatus from './components/SystemStatus'
 import ContactsTable from './components/ContactsTable'
@@ -13,7 +14,7 @@ import Toasts from './components/Toasts'
 import UploadRail from './components/UploadRail'
 import Waterfall from './components/Waterfall'
 
-const TABS = ['Overview', 'Map', 'Waterfall', 'Contacts', 'Recovery', 'Diff', 'Copilot', 'System']
+const TABS = ['Overview', 'Map', 'Waterfall', 'Contacts', 'Recovery', 'Physics Lab', 'Diff', 'Copilot', 'System']
 const FILTERED_TABS = new Set(['Map', 'Waterfall', 'Contacts'])
 
 // A- / A / A+ — the standard GoI portal accessibility control. Applied to the
@@ -247,6 +248,7 @@ export default function App() {
           {tab === 'Recovery' && (
             <RecoveryPlanner survey={survey} contacts={contacts} pushToast={pushToast} />
           )}
+          {tab === 'Physics Lab' && <PhysicsLab pushToast={pushToast} />}
           {tab === 'Diff' && <DiffView surveys={surveys} pushToast={pushToast} />}
           {tab === 'Copilot' && <Copilot pushToast={pushToast} />}
           {tab === 'System' && <SystemStatus pushToast={pushToast} />}
