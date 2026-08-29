@@ -357,3 +357,36 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
 20. **`model_dump()` writes optional fields as explicit `None`, so `dict.get(key, default)` never
     fires.** The first simulate request crashed on `float(None)` because every unset target
     dimension arrived as a present-but-null key. `_pick()` now treats missing and null alike.
+
+## Real-data round
+
+21. **The system has now met real sonar, and the result is split.** KLSG
+    (`SeabedObjects-Ship-and-Airplane-dataset`) supplies 385 real shipwreck and 62 real
+    aircraft side-scan images from five manufacturers -- L-3 Klein, EdgeTech, Lcocean,
+    Hydro-tech Marine, Tritech -- released for academic use. All 447 parse and run the full
+    L1 chain with no per-format handling and no crashes. **The signal chain transfers.**
+22. **The detection models do not transfer, measured over the whole corpus.** 3602 raw
+    detections across 447 images: **85.7% come from Brain C**, the open-set autoencoder,
+    flooding on real seabed texture it has never reconstructed. Brain A reaches for `wreck`
+    or `aircraft` on only **53 of 385 wreck images (13.8%)**. Trained on 172 synthetic tiles,
+    it has never seen a real hull. Only 19 detections survive the shipped 50% floor across
+    the entire corpus, so the physics gate is visibly the only thing holding the output
+    together.
+23. **Domain-adapting Brain C on real seabed was attempted and rejected.** Training on the
+    border bands of the 81 KLSG chips large enough to have a margin clear of their centred
+    target (`--klsg`) produced no operating point worth shipping: at its own calibrated
+    threshold the real flood halves (539 -> 307) but synthetic false anomalies triple
+    (15 -> 45) and the demo gains two contacts that are not there; at the shipped threshold
+    the flood drops 71% (539 -> 157) but open-set detection stops dead -- zero
+    `unknown_anomaly` contacts, which is the whole reason Brain C exists. One small
+    convolutional autoencoder with a single global threshold cannot span two domains this
+    different on 324 border bands. **The shipped weights were left unchanged**, so every
+    published table remains valid, and the retrained checkpoint stays out of the deployed
+    path. The likelier fix is matching the domains' statistics in preprocessing rather than
+    asking one autoencoder to cover both.
+24. **KLSG has class folders but no bounding boxes**, so it cannot train a detector directly.
+    Weakly supervised fine-tuning on its target-centred chips is the remaining path, and its
+    pseudo-boxes would be approximate -- any mAP from it is not comparable to the synthetic
+    numbers and must not be quoted beside them.
+25. **The SCTD download URL 404s** as of 2026-08-29; the upstream repository has moved or been
+    renamed. Recorded in the dataset spec rather than silently left to fail again.

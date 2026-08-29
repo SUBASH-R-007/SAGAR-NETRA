@@ -640,6 +640,37 @@ range at 8 m altitude.
 
 ---
 
+## 11a. First contact with real sonar
+
+![Real sonar before and after conditioning](docs/images/real_data.png)
+
+*Real KLSG shipwreck imagery as supplied (left) and after the L1 chain (right). The
+highlight-and-shadow structure the physics gate keys on is unmistakable in real data.*
+
+The pipeline has now been run over **447 real side-scan images** — 385 shipwrecks and 62
+aircraft from L-3 Klein Associates, EdgeTech, Lcocean, Hydro-tech Marine and Tritech
+(KLSG, academic use). Full report: [`docs/real_data.md`](docs/real_data.md).
+
+**What transfers:** all 447 parse and run the complete signal chain — bottom tracking,
+slant correction, despeckle, CLAHE, tiling — with no per-format handling and no crashes.
+
+**What does not:** the detection models. Across the corpus, **85.7% of 3602 raw detections
+come from the open-set autoencoder** flooding on unfamiliar seabed texture, and the
+supervised detector reaches for `wreck` or `aircraft` on only **53 of 385 wreck images
+(13.8%)**. Trained on 172 synthetic tiles, it has never seen a real hull. Only **19
+detections survive the shipped 50% floor** across all 447 images — the physics gate is
+visibly the only thing holding the output together.
+
+Domain-adapting the autoencoder on real seabed was tried and **rejected**: no operating
+point improved real data without either tripling synthetic false alarms or killing
+open-set detection outright. The shipped weights were left unchanged. The honest claim is
+now narrower and firmer:
+
+> The **signal chain** works on real sonar from five manufacturers. The **models** are
+> trained on synthetic data and do not yet transfer — measured, not assumed.
+
+---
+
 ## 12. Honest limitations
 
 Stated plainly, because a prototype that hides its edges is not trustworthy:

@@ -81,6 +81,10 @@ DATASETS: tuple[DatasetSpec, ...] = (
             "sonar common target detection: aircraft, ship, human classes for "
             "fine-tuning wreck/aircraft/human_body heads"
         ),
+        note=(
+            "URL returned HTTP 404 on 2026-08-29 -- the upstream repository "
+            "appears to have moved or been renamed; verify before relying on it"
+        ),
     ),
     DatasetSpec(
         name="klsg",
