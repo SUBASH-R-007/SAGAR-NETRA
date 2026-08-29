@@ -1,0 +1,39 @@
+# Towfish beam and pulse geometry.
+#
+# These describe the SENSOR, not the survey: a different sonar changes all of
+# them, while a different survey line with the same sonar changes none. Values
+# that vary per ping (slant range, altitude, sound velocity) are read from the
+# file's own navigation instead and never appear here.
+#
+# Defaults describe a typical 455 kHz side-scan towfish. See
+# sonar_core/geometry.py for what each one drives.
+
+geometry:
+  # Along-track (horizontal) beam width. Sets along-track resolution as
+  # theta * R, so it is the reason far-range contacts are smeared: 0.22 m at
+  # 25 m, 0.65 m at 75 m. The dominant term in how precisely a contact's
+  # LENGTH can be known.
+  along_track_beam_deg: 0.5
+
+  # Across-track (vertical) beam width -- the angular extent of the swath
+  # fan. Recorded for provenance; the usable swath is measured from the data
+  # rather than assumed from this angle.
+  across_track_beam_deg: 50.0
+
+  # Transmitted pulse length. Sets across-track resolution as c*tau/2 =
+  # 7.5 cm at 1500 m/s -- constant across the whole swath, because it depends
+  # on the pulse alone and not on how far the pulse travelled.
+  pulse_length_s: 1.0e-4
+
+  # Fractional uncertainty in the assumed sound speed. Range is c*t/2, so this
+  # is a direct scale error on every range: 1% is 0.75 m at 75 m. Charged to
+  # the per-contact position budget in geoscribe.build.position_accuracy.
+  # 1% is typical for an uncompensated survey over an unmeasured thermocline;
+  # drop it if the vessel runs a sound-velocity profiler.
+  sound_velocity_uncertainty_frac: 0.01
+
+  # Half-width of the band around the second bottom return (ground range
+  # A*sqrt(3)) treated as multipath-suspect, as a fraction of that range.
+  # Only ever raises a flag for the analyst -- it never demotes or deletes a
+  # detection, because real debris does sometimes lie at 1.73 altitudes.
+  multipath_tolerance_frac: 0.15

@@ -291,3 +291,42 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
     net-negative on F1 (0.909 -> 0.848 at k=0.25, 0.899 -> 0.812 at k=0.05). The shadow cue is
     real and conditional. Claiming it as independent corroboration of Stage-1 would have been
     unsupported, and the claim was removed from the README and the generated table.
+
+## Sensor-geometry round
+
+11. **An audit of the thirteen claimed physics relationships found five genuinely absent.**
+    Implemented as `sonar_core/geometry.py` + `configs/sonar.yaml`: fan-beam geometry (beam widths
+    were nowhere in the codebase), across-track resolution `c*tau/2`, along-track resolution
+    `theta*R`, the sound-speed term in the position budget, and a multipath range check. The
+    shipped defaults (0.5 deg along-track beam, 100 us pulse) reproduce the quoted textbook
+    figures exactly — 7.5 cm across-track, 0.22 m along-track at 25 m, 0.65 m at 75 m, 0.75 m of
+    range error at 75 m — so those numbers are now *computed from config*, not asserted in prose.
+12. **`R = c*t/2` was already implemented; the audit's first pass said otherwise and was wrong.**
+    `sonar_core/parsers/jsf.py` derives `slant_range` from the recorded sampling interval and the
+    sound speed read from the JSF header at byte 148, which is exactly that relation; Humminbird
+    derives its per-sample footprint from `c/(2*Fs)`. XTF records slant range directly and needs
+    no derivation. `sonar_core.geometry.slant_range_from_time` now states the relation once, with
+    a test asserting it agrees with the JSF adapter so the two cannot drift apart.
+13. **Frequency-dependent absorption was deliberately NOT implemented.** It is the one item on the
+    list with no consumer: EGN already removes the residual range-dependent gain *empirically*,
+    from the data itself, which is strictly better than modelling absorption and subtracting a
+    prediction. Adding an `absorption_db_per_km` parameter that nothing reads would be a magic
+    number with a physics-shaped excuse. The frequency trade-off remains what it always was —
+    justification for the sensor choice, not a pipeline computation.
+14. **The sound-speed term is opt-in at the function boundary.** `position_accuracy` takes
+    `ground_range_m=0.0` and `sv_uncertainty_frac=0.0` by default, so a caller that knows nothing
+    about range gets the previous budget bit-for-bit; only `build_contacts`, which knows both,
+    supplies them. Adding a term to a shared formula is exactly the kind of change that silently
+    moves every number computed by code nobody remembered to update, and a test pins the
+    unchanged-when-unsupplied behaviour.
+15. **The multipath check flags and never demotes, and its precision is unvalidated.** A second
+    bottom return lands at ground range `A*sqrt(3)`, and detections in a +/-15% band around it are
+    marked `multipath_suspect`. It deliberately does not touch the confidence multiplier: real
+    debris does sometimes lie at 1.73 altitudes, and trading a known false-alarm source for an
+    unknown miss is a bad exchange. A test proves the flag is inert by widening the band from
+    "nothing" to "almost everything" and asserting confidences stay bit-identical — without which
+    this addition could have silently changed every published table. **The honest limitation:**
+    the scene simulator renders no second bottom return, so on the synthetic corpus every flag is
+    a false positive by construction (4 of 14 on the sample survey). The *geometry* is tested; the
+    flag's precision can only be assessed on real data, and it is presented as "check this",
+    never as "this is multipath".

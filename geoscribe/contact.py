@@ -44,6 +44,15 @@ class Dimensions(BaseModel):
     height_m: float | None = Field(
         default=None, ge=0, description="height from shadow; None when no usable shadow"
     )
+    along_track_resolution_m: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "beam footprint along-track at this contact's range (theta * R): the "
+            "resolution floor on length_m. It grows linearly with range, so a "
+            "far-range length is a much softer number than a near-range one"
+        ),
+    )
 
 
 class PhysicsEvidence(BaseModel):
@@ -57,6 +66,14 @@ class PhysicsEvidence(BaseModel):
     height_m: float | None = None
     physics_violation: bool = False
     violation_reason: str | None = None
+    multipath_suspect: bool = Field(
+        default=False,
+        description=(
+            "sits where the second bottom return lands (ground range A*sqrt(3)), "
+            "so may be the seabed heard twice rather than an object. Advisory: it "
+            "never lowers confidence, because real debris does lie there sometimes"
+        ),
+    )
 
 
 class SeverityBreakdown(BaseModel):
@@ -172,6 +189,10 @@ def contacts_json_schema() -> dict[str, Any]:
                             "range_m": {"type": ["number", "null"]},
                             "altitude_m": {"type": ["number", "null"]},
                             "n_pings": {"type": "integer"},
+                            "sound_velocity_mps": {"type": ["number", "null"]},
+                            "across_track_resolution_m": {"type": ["number", "null"]},
+                            "along_track_resolution_max_m": {"type": ["number", "null"]},
+                            "sound_speed_range_error_max_m": {"type": ["number", "null"]},
                         },
                     },
                 },

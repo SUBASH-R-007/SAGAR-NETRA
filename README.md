@@ -167,6 +167,39 @@ Every script has a `--smoke` profile that finishes in under a minute for CI.
 
 ## 5. Layer by layer — what is actually implemented
 
+### The sonar physics, and where each relationship is used
+
+Side-scan imagery is an acoustic reflectance map, not a photograph. Twelve relationships
+govern what it can and cannot show, and each one below is *computed* somewhere in the
+pipeline — the figures in the last column come from `configs/sonar.yaml`, not from prose.
+
+| Physics | Relation | Implemented in |
+|---|---|---|
+| Waterfall formation | nadir at centre, port mirrored left | [`sonar_core/waterfall.py`](sonar_core/waterfall.py) |
+| Range from time | `R = c·t/2` | [`parsers/jsf.py`](sonar_core/parsers/jsf.py) (from sampling interval + header sound speed); [`geometry.py`](sonar_core/geometry.py) |
+| Slant → ground range | `G = √(R² − A²)` | [`preprocess/slant_range.py`](sonar_core/preprocess/slant_range.py), per-ping altitude |
+| Water column | dead zone to first bottom return | [`preprocess/bottom_track.py`](sonar_core/preprocess/bottom_track.py) — tracked per ping, not assumed |
+| TVG / gain banding | residual range-dependent gain | [`preprocess/egn.py`](sonar_core/preprocess/egn.py), empirical, nadir-guarded |
+| Speckle statistics | multiplicative Rayleigh | [`preprocess/despeckle.py`](sonar_core/preprocess/despeckle.py) (Lee) + renderer |
+| Acoustic shadow | `H = A·(x_end − x_far)/x_end` | [`physicheck/shadow.py`](physicheck/shadow.py) — the ground-domain form of `H = L·A/R` |
+| Fan-beam geometry | 0.5° along, 50° across | [`configs/sonar.yaml`](configs/sonar.yaml) |
+| Across-track resolution | `c·τ/2` — **constant with range** | `geometry.py` → **7.5 cm** |
+| Along-track resolution | `θ·R` — **degrades with range** | `geometry.py` → **0.22 m @ 25 m, 0.65 m @ 75 m**; reported per contact as `dims.along_track_resolution_m` |
+| Sound-speed error | 1% of `c` = 1% of every range | charged per contact in `position_accuracy` → **0.75 m at 75 m** |
+| Multipath | 2nd bottom return at `A·√3` | `physicheck/verify.py` → `multipath_suspect` (advisory only — see §12) |
+
+The two resolution limits are the ones that change how a report should be *read*:
+across-track resolution never degrades, so the far swath edge is as sharp as nadir; but
+along-track smear grows linearly, so a length measured at 75 m is three times softer than
+the same length at 25 m. Every contact therefore carries the beam footprint that bounds
+its own `length_m`.
+
+**Not implemented, deliberately:** frequency-dependent absorption (`~f²`). EGN already
+removes residual range-dependent gain *empirically from the data*, which beats subtracting
+a modelled prediction. The frequency trade-off justifies the sensor choice; it is not a
+pipeline computation, and adding a parameter nothing reads would be a magic number with a
+physics-shaped excuse.
+
 ### L1 · SonicPrep — ingestion and signal conditioning
 
 | Module | What it does |
@@ -600,7 +633,13 @@ Stated plainly, because a prototype that hides its edges is not trustworthy:
 6. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled
    as such — not official maritime boundaries.
 7. **Not an official Government of India website** — the console states this in its footer.
-8. **Deliberate non-goals**, each with a written rationale in `DECISIONS.md`: OpenMax fusion
+8. **The multipath flag's precision is unvalidated.** The geometry is right and tested — a second
+   bottom return lands at `A·√3` — but the scene simulator renders no multipath, so on synthetic
+   data every flag is a false positive by construction (4 of 14 on the sample survey). It is
+   advisory only: it never lowers a confidence, and a test pins that inertness by widening the
+   band from "nothing" to "almost everything" and asserting confidences stay bit-identical. Read
+   it as "check this", never "this is multipath"; assessing its precision needs real survey data.
+9. **Deliberate non-goals**, each with a written rationale in `DECISIONS.md`: OpenMax fusion
    (Brain C + consensus covers open-set), MC-dropout (YOLOv8n has no dropout layers), and
    diffusion/CycleGAN synthesis (needs GPUs and real style targets).
 

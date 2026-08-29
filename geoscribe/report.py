@@ -107,6 +107,17 @@ def _summary_block(
             "range_m": survey_stats.get("range_m"),
             "altitude_m": survey_stats.get("altitude_m"),
             "n_pings": survey_stats.get("n_pings"),
+            "sound_velocity_mps": survey_stats.get("sound_velocity_mps"),
+            # Resolution limits: what this sonar could have resolved at all.
+            # Across-track is constant across the swath; along-track is quoted
+            # at the far edge, the worst case an operator has to live with.
+            "across_track_resolution_m": survey_stats.get("across_track_resolution_m"),
+            "along_track_resolution_max_m": survey_stats.get(
+                "along_track_resolution_max_m"
+            ),
+            "sound_speed_range_error_max_m": survey_stats.get(
+                "sound_speed_range_error_max_m"
+            ),
         }
     return summary
 
