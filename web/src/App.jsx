@@ -44,6 +44,7 @@ export default function App() {
   const [contacts, setContacts] = useState([])
   const [cls, setCls] = useState('all')
   const [minConf, setMinConf] = useState(0)
+  const [review, setReview] = useState('all')
   const [toasts, setToasts] = useState([])
   const [fontStep, setFontStep] = useState(readStoredFontStep)
 
@@ -84,6 +85,7 @@ export default function App() {
   // filters are applied client-side so they are instant and shared by every tab.
   useEffect(() => {
     setCls('all')
+    setReview('all')
     if (!survey) {
       setContacts([])
       return undefined
@@ -136,8 +138,14 @@ export default function App() {
   const classes = useMemo(() => [...new Set(contacts.map((c) => c.cls))].sort(), [contacts])
 
   const filtered = useMemo(
-    () => contacts.filter((c) => (cls === 'all' || c.cls === cls) && c.confidence >= minConf),
-    [contacts, cls, minConf],
+    () =>
+      contacts.filter(
+        (c) =>
+          (cls === 'all' || c.cls === cls) &&
+          c.confidence >= minConf &&
+          (review === 'all' || c.review === review),
+      ),
+    [contacts, cls, minConf, review],
   )
 
   return (
@@ -229,6 +237,8 @@ export default function App() {
           onCls={setCls}
           minConf={minConf}
           onMinConf={setMinConf}
+          review={review}
+          onReview={setReview}
           shown={filtered.length}
           total={contacts.length}
           onDeleteSurvey={onDeleteSurvey}

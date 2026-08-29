@@ -271,3 +271,15 @@
   background: var(--panel);
   color: var(--ink);
 }
+
+/* declared-geometry honesty banner on the Overview */
+.ov-declared {
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  font-size: var(--fs-small, 0.8125rem);
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+  background: var(--saffron-wash);
+  border-left: 3px solid var(--saffron);
+  color: var(--ink);
+}

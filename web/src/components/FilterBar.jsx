@@ -8,6 +8,8 @@ export default function FilterBar({
   onCls,
   minConf,
   onMinConf,
+  review,
+  onReview,
   shown,
   total,
 }) {
@@ -34,6 +36,17 @@ export default function FilterBar({
             delete
           </button>
         )}
+      </label>
+
+      <label className="ctl">
+        <span className="ctl-label">Review</span>
+        <select value={review} onChange={(e) => onReview(e.target.value)}
+          aria-label="Filter by review status">
+          <option value="all">all statuses</option>
+          <option value="pending">pending</option>
+          <option value="confirmed">confirmed</option>
+          <option value="rejected">rejected</option>
+        </select>
       </label>
 
       <label className="ctl">

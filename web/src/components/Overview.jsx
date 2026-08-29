@@ -210,11 +210,21 @@ export default function Overview({ contacts, survey, surveys, onTab, pushToast }
   if (cfg?.range_m != null) prov.push(`RANGE ${fmtMeters(cfg.range_m)}`)
   if (cfg?.altitude_m != null) prov.push(`ALTITUDE ${fmtMeters(cfg.altitude_m)}`)
   if (pingText != null) prov.push(`PINGS ${pingText}`)
+  if (cfg?.nav_source) prov.push(`NAV ${String(cfg.nav_source).toUpperCase()}`)
   if (summary?.pipeline_version) prov.push(`PIPELINE v${summary.pipeline_version}`)
   if (summary?.generated_at) prov.push(`GENERATED ${summary.generated_at}`)
 
+  const declaredNav = cfg?.nav_source === 'declared-line'
+
   return (
     <div className="overview">
+      {declaredNav && (
+        <p className="ov-declared" role="note">
+          DECLARED GEOMETRY — this survey is an image with no recorded navigation.
+          Positions are computed from the operator-declared line and are correct
+          relative to it; they are not surveyed coordinates.
+        </p>
+      )}
       {/* 1 · KPI tile row */}
       <section className="ov-section">
         <h2 className="ov-eyebrow">Survey roll-up</h2>

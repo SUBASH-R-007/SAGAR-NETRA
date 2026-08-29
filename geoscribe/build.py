@@ -143,6 +143,14 @@ def survey_stats(pre: PreprocessResult) -> dict[str, Any]:
     max_range = float(np.max(slant)) if slant.size else 0.0
 
     return {
+        # How positions were obtained. "declared-line" marks a track the
+        # operator declared at upload (an image records no navigation): the
+        # positions are correct RELATIVE to that line and must never read as
+        # recorded navigation. Surfaced as a badge in the console.
+        "nav_source": gi.meta.get(
+            "nav_source",
+            "recorded" if int(finite.sum()) else "none",
+        ),
         "track_length_km": round(track_m / 1e3, 3),
         "swath_width_m": round(swath_m, 1),
         "area_surveyed_sqkm": round(track_m * swath_m / 1e6, 4),
