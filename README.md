@@ -9,9 +9,10 @@ Smart India Hackathon 2026 · Problem Statement **26057** · Ministry of Earth S
 
 | | |
 |---|---|
-| **Status** | Complete end-to-end prototype, all 8 milestones + 7 hardening rounds |
+| **Status** | Complete prototype: 8 milestones + 12 hardening rounds; detector **retrained on real sonar** (UATD + KLSG); edge deployment path exported and verified |
 | **Tests** | **371 passing**, 0 failures, `ruff` clean across 8 packages |
-| **Code** | 15,813 lines Python (9,854 library) · 3,395 lines frontend · 112 Python modules |
+| **Detector** | mAP50 **0.819 on real annotated sonar boxes** (UATD val) · 0.808 synthetic · calibrated at T=1.05, ECE 0.073 |
+| **Code** | 24,183 lines Python (12,716 library/API/edge · 5,069 scripts · 6,398 tests) · 7,956 lines frontend · 129 modules |
 | **Cloud dependency** | **None.** Zero network calls at inference |
 | **Input formats** | XTF · EdgeTech JSF · Lowrance SL2/SL3 · Humminbird DAT/SON · GeoTIFF · PNG/JPG |
 | **Output formats** | JSON (+ JSON Schema) · CSV · GeoJSON · KML · PDF |
@@ -51,7 +52,7 @@ The approach is four steps, and the second-to-last one is what makes it defensib
 | | **1 · CONDITION** | **2 · DETECT** | **3 · VERIFY** | **4 · ACT** |
 |---|---|---|---|---|
 | | raw log → clean imagery | triple-brain AI | physics + calibration | decision-ready output |
-| | Bottom tracking · slant-range correction √(R²−A²) · empirical gain normalization · shadow-preserving despeckle · CLAHE · SAHI tiling | **YOLOv8 deep ensemble** (rigid debris) ∥ **U-Net masks** (ghost nets, ropes) ∥ **Autoencoder** (open-set unknowns) | Highlight–shadow pairing · height from shadow **H = L·A/R** · class plausibility gates · 13-feature ML verifier · cross-ping persistence · temperature-scaled 0–100% | WGS-84 geotag · entanglement severity index · clustered recovery routes · 5 report formats · live console |
+| | Bottom tracking · slant-range correction √(R²−A²) · empirical gain normalization · shadow-preserving despeckle · CLAHE · SAHI tiling | **YOLOv8 detector, real-data trained** (rigid debris) ∥ **U-Net masks** (ghost nets, ropes) ∥ **Autoencoder** (open-set unknowns) | Highlight–shadow pairing · height from shadow **H = L·A/R** · class plausibility gates · 13-feature ML verifier · cross-ping persistence · temperature-scaled 0–100% | WGS-84 geotag · entanglement severity index · clustered recovery routes · 5 report formats · live console |
 
 **The core insight.** A side-scan sonar image is an *acoustic reflectance map*, not a photograph.
 A real object proud of the seabed produces a **bright highlight paired with a dark shadow
@@ -75,7 +76,7 @@ flowchart TD
     end
 
     subgraph L2["L2 · TridentNet — triple brain"]
-        E --> F["Brain A<br/>YOLOv8 deep ensemble<br/>rigid debris boxes"]
+        E --> F["Brain A<br/>YOLOv8 · real-data trained<br/>rigid debris boxes"]
         E --> G["Brain B<br/>U-Net segmentation<br/>net / rope masks"]
         E --> H["Brain C<br/>conv-autoencoder<br/>open-set anomalies"]
         F --> I["ensemble merge<br/>corroboration + provenance"]
@@ -97,7 +98,7 @@ flowchart TD
 
     subgraph L5["L5 · DRISHTI Console"]
         O --> P["FastAPI + WebSocket + SQLite"]
-        P --> Q["map · waterfall overlay · evidence cards<br/>review queue · change detection · copilot<br/>recovery routes · 4 mission profiles"]
+        P --> Q["map · waterfall · evidence cards · review queue<br/>change detection · copilot · physics lab<br/>recovery routes · system health · 4 mission profiles"]
     end
 
     F -.-> R["EDGE PATH<br/>ONNX · INT8 · Jetson / Pi<br/>offline, no network"]
@@ -160,8 +161,13 @@ watch detections arrive one by one over the WebSocket, as they would on a towed 
 ### Training from scratch (all CPU, all offline)
 
 ```bash
-python scripts/train_detector.py                     # Brain A  ~15 min
-python scripts/train_detector.py --seed 1 --dest weights/detector_seed1.pt --name detector_seed1
+python scripts/train_detector.py --data data/datasets/real_mix/data.yaml   # Brain A as deployed
+#   (build the mix first: download_datasets.py --get uatd/klsg, build_uatd_dataset.py,
+#    build_klsg_dataset.py, build_real_mix.py; ~5 h on an RTX 4060 at workers=0.
+#    Plain train_detector.py reproduces the synthetic-only baseline and OVERWRITES
+#    the deployed real-data weights - back them up first.)
+python scripts/train_detector.py --data data/datasets/real_mix/data.yaml --seed 1 \
+#     --dest weights/detector_seed1.pt --name detector_realmix_seed1   # optional ensemble member
 python scripts/train_segmenter.py --epochs 60        # Brain B  ~9 min
 python scripts/train_anomaly.py                      # Brain C  ~10 min
 python scripts/train_verifier.py --scenes 10         # Stage-2 verifier  ~2 min
@@ -169,7 +175,8 @@ python scripts/fit_calibration.py --apply            # temperature scaling
 python scripts/eval_detector.py                      # the ablation table
 ```
 
-Every script has a `--smoke` profile that finishes in under a minute for CI.
+The training scripts have a `--smoke` profile (tiny dataset, a few minutes) for CI; the
+evaluation scripts shrink via `--scenes` instead.
 
 ---
 
@@ -218,7 +225,7 @@ physics-shaped excuse.
 | `parsers/lowrance.py` | **Citizen sonar**: Lowrance `.sl2`/`.sl3`, both frame layouts, spherical-mercator inverse, composite sidescan split at nadir |
 | `parsers/humminbird.py` | **Citizen sonar**: Humminbird `.DAT` + `.SON`/`.IDX`, tag-walked records per PING-Mapper |
 | `parsers/geotiff.py` | Georeferenced mosaics (optional `rasterio`); marks `ground_range` so slant stages are skipped |
-| `parsers/image.py` | Plain PNG/JPG waterfall crops for public benchmark datasets |
+| `parsers/image.py` | PNG/JPG with **operator-declared geometry** (altitude, range, position, heading; combined or single-channel layout) - unlocks slant correction, height-from-shadow and geotagging on images that record no navigation |
 | `preprocess/bottom_track.py` | First-bottom-return detection with sustained-run thresholding, outlier rejection against a median-smoothed reference, header-altitude fallback |
 | `preprocess/slant_range.py` | Ground range = √(R²−A²), per-ping altitude aware, **invertible to 6×10⁻¹² px**; nadir blend columns honestly NaN-masked |
 | `preprocess/egn.py` | Empirical gain normalization; per-range medians with an 8-sample nadir guard band (without it, near-nadir gain inflated up to **2.2×**) — **19.8× flatness improvement** |
@@ -261,10 +268,12 @@ segmentation would be wasted compute. And an object class nobody trained on stil
 so an autoencoder trained *only on clean seabed* flags reconstruction-error blobs as
 `unknown_anomaly`. Most teams pick one architecture and force everything through it.
 
-**Deep-ensemble uncertainty** (`deep_ensemble.py`): three independently seeded detectors vote;
+**Deep-ensemble uncertainty** (`deep_ensemble.py`): independently seeded detectors vote;
 fused score = `sum(matched member scores) / n_models`, so unanimous agreement keeps the mean while
-a 1-of-3 lone find is cut to a third. This replaces MC-dropout, which YOLOv8n cannot provide —
-it has no dropout layers to sample.
+a lone find is cut proportionally. This replaces MC-dropout, which YOLOv8n cannot provide — it has
+no dropout layers to sample. **Currently deployed single-member**: the old synthetic-only seeds
+would veto exactly the real-sonar detections the retrain bought, so `configs/detector.yaml` lists
+one member and documents the command to retrain seeds on the real mix before re-adding them.
 
 **Ensemble merge** (`ensemble.py`): a Brain-C blob overlapping a Brain-A box at IoU ≥ 0.30
 *corroborates* it (+0.05 score, provenance `AC`); Brain-B masks refine boxes to their true pixel
@@ -373,11 +382,15 @@ Design system committed at [`web/DESIGN.md`](web/DESIGN.md).
 
 | Tab | What it does |
 |---|---|
+| **Overview** | Landing view: KPI tiles, severity distribution, class breakdown, priority action queue, physics evidence summary - served from the report's own summary block so console and reports cannot disagree |
 | **Map** | Contacts on satellite imagery, coloured by severity, with sensitive-zone GeoJSON overlays, a severity heatmap toggle, and click-through Evidence Cards with Confirm/Reject |
 | **Waterfall** | The processed sonar image with detection boxes registered pixel-exactly over it, zoom, raw/enhanced toggle, click a box → contact detail |
 | **Contacts** | Dense ledger: thumbnail, class, confidence, severity swatch, L×W×H, depth, physics badges, review state, **recovery state**, and one-click download of all five report formats |
+| **Recovery** | Retrieval-zone clustering and an optimised vessel tour with numbered waypoints and leg distances - the loop from sonar pixel to cleanup sortie |
+| **Physics Lab** | Three interactive acoustics models (height-from-shadow, resolution limits, build-a-seabed simulator) - every slider calls the deployed backend physics, not a JS re-derivation |
 | **Diff** | Change detection between two surveys — what is NEW since the last pass (the post-cyclone port-clearance feature) |
 | **Copilot** | Natural language over the contact store: *"contacts longer than 5 m between 20 and 40 m depth"*, *"how many ghost nets?"*, *"contacts near the turtle nesting zone"*, plus auto-drafted survey summaries |
+| **System** | Model registry with SHA-1 fingerprints per weights file, memory, throughput, the five-layer chain, offline posture |
 
 Plus a persistent **ingest rail**: drag-and-drop upload, **BATCH or LIVE STREAM** mode, live
 WebSocket progress, and a per-detection feed while streaming.
@@ -408,8 +421,9 @@ Rows (c) and (d) coincide because consensus already suppresses 1–2-ping impuls
 
 > **Read honestly:** these are *synthetic* held-out scenes. Synthetic targets are easier than real
 > debris in real clutter, so treat the absolute values as an upper bound and the **relative ladder**
-> as the result. The path to real-data numbers is `scripts/download_datasets.py` plus the
-> active-learning flywheel.
+> as the result. Real-data detector numbers now exist (section 11a: 0.819 mAP50 on real annotated
+> boxes, 93.2% wreck-reach on 447 real images); a real-data version of *this ladder* still needs
+> an annotated side-scan survey corpus.
 
 ### Against a classical baseline — an honest negative result
 
@@ -474,7 +488,7 @@ shipping layers, or populate a report. That gap is architectural, not a matter o
 The likeliest reason the learned stack did not pull ahead is that a clean simulated seabed of
 high-contrast targets is exactly the regime a tuned threshold is best at — compounded, at the
 time of this comparison, by a detector trained on 172 synthetic tiles (that detector has since
-been retrained on real data, section 6; this table predates the retrain and is kept as
+been retrained on real data, section 11a; this table predates the retrain and is kept as
 published rather than re-run, because the confound it documents is about the *benchmark*, not
 the model).
 
@@ -482,16 +496,16 @@ the model).
 
 | Stage | ms / tile | Throughput |
 |---|---|---|
-| L1 preprocessing | — | **2,717 pings/s** (800-ping survey in 0.29 s) |
-| Detector — PyTorch CPU | 55.7 | 17.96 tiles/s |
-| Detector — **ONNX Runtime CPU** | **26.2** | **38.14 tiles/s** |
-| Detector — ONNX INT8 CPU | 223.6 | 4.47 tiles/s *(see note)* |
-| Anomaly autoencoder | 40.7 | 24.57 tiles/s |
+| L1 preprocessing | — | **2,822 pings/s** (800-ping survey in 0.28 s) |
+| Detector — PyTorch CPU | 64.7 | 15.45 tiles/s |
+| Detector — **ONNX Runtime CPU** | **29.9** | **33.44 tiles/s** |
+| Detector — ONNX INT8 CPU | 292.3 | 3.42 tiles/s *(see note)* |
+| Anomaly autoencoder | 35.3 | 28.35 tiles/s |
 
 A side-scan sonar produces 1–10 ping lines per second. The pipeline runs far ahead of the sensor.
 
-> **INT8 note, stated honestly:** dynamic quantisation shrinks the model from **11.6 MB → 3.1 MB**
-> (the sub-10 MB edge target is met) but runs *slower* on this x86 laptop, which has no VNNI int8
+> **INT8 note, stated honestly:** dynamic quantisation shrinks the model from **12.7 MB → 3.8 MB**
+> (the sub-10 MB edge target is met, and INT8 holds mAP50 0.809) but runs *slower* on this x86 laptop, which has no VNNI int8
 > convolution path. The INT8 speed claim belongs to Jetson TensorRT, on hardware we do not have.
 > The benchmark says so rather than hiding it.
 
@@ -500,7 +514,7 @@ A side-scan sonar produces 1–10 ping lines per second. The pipeline runs far a
 | Item | Result |
 |---|---|
 | Brain A detector (60 epochs, imgsz 640, RTX 4060) | mAP50 **0.834** mixed val; **0.819 real boxes** (UATD); 0.808 synthetic |
-| Training data | 7,838 images (88% real sonar), **12,616 real annotated boxes** |
+| Training data | 7,838 images (92% real sonar; 88% with real human-drawn boxes), **12,616 real annotated boxes** |
 | Brain B segmenter (60 epochs) | val Dice **0.924**; mask alignment verified to **0.02 px** |
 | Stage-2 verifier | held-out AUC **0.955**, accuracy **0.957** |
 | Confidence calibration | ECE **0.073**, T = 1.05 (refit after the real-data retrain) |
@@ -508,7 +522,7 @@ A side-scan sonar produces 1–10 ping lines per second. The pipeline runs far a
 | Height from shadow | seeded 2.0 m recovered within 25%; 2.4 m container measured at 2.36 m |
 | Geotag accuracy | within **6%** of seeded across-track offset |
 | Slant↔ground round-trip | **6×10⁻¹² px** |
-| End-to-end demo (full triple-brain + verifier) | 1200 pings → 18 tiles → 17 detections → **14 contacts + 5 reports in 13.0 s** |
+| End-to-end demo (full triple-brain + verifier) | 1200 pings → 18 tiles → 17 raw detections → **13 contacts + 5 reports in ~10 s** |
 
 ![Detections](docs/images/detections.png)
 
@@ -553,20 +567,24 @@ A mission profile re-weights the severity hazard table and the detector confiden
 
 ## 8. Data strategy
 
-**Offline training is fully synthetic and honest about it.** The scene renderer produces
-physically correct imagery through the *same* preprocessing chain used at inference, so training
-chips are exactly what the detector sees in production. Ghost nets get 3× sampling weight as the
-rarest and hardest class.
+**Training is real-first, synthetic-supported.** The deployed detector is trained on
+`data/datasets/real_mix` — 6,895 real UATD images with 12,616 human-annotated boxes (CC BY 4.0)
+plus 352 real KLSG side-scan chips with measured weak labels, blended with 591 synthetic chips.
+The synthetic factory remains the source for the segmenter, the anomaly brain and the physics
+verifier: it renders physically correct imagery through the *same* preprocessing chain used at
+inference, and ghost nets get 3× sampling weight as the rarest and hardest class.
 
 **Augmentation obeys sonar physics.** Mirroring across columns, rotation, shear and perspective are
 *forbidden* — they would place acoustic shadows up-range of their highlights, geometry no sonar can
 produce. Isotropic scaling, translation and along-track flips are valid. The rule is pinned
 explicitly in the training script so an upstream default change cannot silently violate it.
 
-**The real-data path is scripted, licensed and documented.** `python scripts/download_datasets.py --list`
+**The real-data path is scripted, licensed — and executed.** `python scripts/download_datasets.py --list`
 prints the table: Marine Debris FLS · UATD · SCTD/SCTD2 · Seabed Objects-KLSG · AI4Shipwrecks ·
-SWDD · Marine PULSE · UXO — each with its license and role. Combined with the active-learning
-flywheel, that is how these weights become field weights.
+SWDD · Marine PULSE · UXO — each with its license and role. UATD and KLSG have been downloaded,
+converted (`build_uatd_dataset.py`, `build_klsg_dataset.py`, `build_real_mix.py`) and trained on;
+UATD's `Test_2` split is reserved untouched as a final holdout. The active-learning flywheel adds
+side-scan-specific labels from every analyst review.
 
 **The bundled sample** (`data/samples/survey_alpha.xtf`, 5.1 MB, committed and byte-reproducible
 from its seed) is a real XTF file containing 1200 pings and **8 seeded targets** with published
@@ -580,7 +598,7 @@ range at 8 m altitude.
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/api/health` | Model versions (SHA-1 per checkpoint), load state, memory, last-survey throughput |
-| `POST` | `/api/upload` | Upload a survey — `mode=batch\|stream`, optional `mission=` |
+| `POST` | `/api/upload` | Upload a survey — `mode=batch\|stream`, optional `mission=`; nav-less images add `layout=combined\|single` + declared geometry (`altitude_m`, `range_m`, `lat`, `lon`, `heading_deg`, `sensor_depth_m`) |
 | `GET` | `/api/jobs` · `/api/jobs/{id}` | Job list / one job snapshot |
 | `WS` | `/api/jobs/{id}/progress` | Live progress; in stream mode, per-detection events |
 | `GET` | `/api/surveys` | Processed surveys |
@@ -595,6 +613,8 @@ range at 8 m altitude.
 | `GET` | `/api/diff?survey_a=&survey_b=&radius_m=` | Change detection |
 | `GET` | `/api/crossview?survey_a=&survey_b=` | Cross-survey confirmation, resurvey flags |
 | `GET` | `/api/route?cluster_eps_m=` | Recovery tour over confirmed contacts |
+| `GET` | `/api/summary?survey=` | The report's own summary block (coverage, density, severity mix) |
+| `GET`/`POST` | `/api/physics/{geometry\|shadow\|classes\|simulate}` | Physics Lab: resolution/multipath geometry, shadow forward+inverse model, scene simulator — all computed by the deployed physics code |
 | `POST` | `/api/copilot` | Natural-language question → answer + SQL + rows |
 | `GET` | `/api/missions` · `/api/layers` | Mission profiles · sensitive-zone GeoJSON |
 | `GET` | `/tiles/{z}/{x}/{y}.png` | Basemap proxy with a per-source disk cache (online once, offline forever) |
@@ -611,19 +631,25 @@ range at 8 m altitude.
 | `geoscribe/` | L4 | Contact model, geotagging, severity index, 5 report writers, clustering + routing |
 | `api/` | L5 | FastAPI app, SQLite store, batch + streaming processing, diff, copilot |
 | `web/` | L5 | React/Vite/Leaflet console + committed design system |
-| `edge/` | — | ONNX + INT8 export with parity checks, benchmarks, TensorRT runbook |
-| `configs/` | — | 6 YAML files + 4 mission profiles — every tunable, commented, with units |
-| `scripts/` | — | 13 CLIs: training, calibration, evaluation, export, demo, dataset download |
-| `tests/` | — | 36 files, **290 tests** |
-| `docs/` | — | README figures (regenerate with `scripts/make_docs_images.py`) |
+| `edge/` | — | ONNX + INT8 export with parity checks (dynamic batch), benchmarks, runbooks: Raspberry Pi 5, Hailo AI HAT, Jetson TensorRT |
+| `configs/` | — | 7 YAML files + 4 mission profiles — every tunable, commented, with units |
+| `scripts/` | — | 20 CLIs: training, calibration, evaluation, export, demo, dataset download + real-dataset builders |
+| `tests/` | — | 43 files, **371 tests** |
+| `docs/` | — | Analysis reports (ablation, baseline comparison, clutter sweep, real data, real training) + README figures |
 
 **Documentation index**
 
 | File | Contents |
 |---|---|
 | [`COMPLIANCE.md`](COMPLIANCE.md) | Feature-by-feature audit against the design blueprint, with evidence |
-| [`DECISIONS.md`](DECISIONS.md) | **41 engineering decisions** across 9 rounds — every assumption, with its reason |
+| [`DECISIONS.md`](DECISIONS.md) | **88 engineering decisions** across 7 milestones and 10+ hardening rounds — every assumption, with its reason |
 | [`docs/ablation.md`](docs/ablation.md) | The ablation ladder and its protocol |
+| [`docs/real_training.md`](docs/real_training.md) | Real-data retrain: acceptance gates, before/after |
+| [`docs/real_data.md`](docs/real_data.md) | The pipeline on 447 real sonar images, honestly |
+| [`docs/baseline_comparison.md`](docs/baseline_comparison.md) | Head-to-head vs a tuned classical CAD baseline |
+| [`docs/clutter_sweep.md`](docs/clutter_sweep.md) | The simulator confound, quantified |
+| [`edge/raspberry_pi.md`](edge/raspberry_pi.md) | Pi 5 full-stack bring-up (CPU-first) |
+| [`edge/hailo.md`](edge/hailo.md) | AI HAT: ONNX → HEF compilation runbook |
 | [`edge/benchmark.md`](edge/benchmark.md) | Machine-stamped throughput measurements |
 | [`edge/trt_int8.md`](edge/trt_int8.md) | Jetson INT8 conversion runbook + calibration-set generator |
 | [`web/DESIGN.md`](web/DESIGN.md) | The console's design system |
@@ -632,8 +658,8 @@ range at 8 m altitude.
 
 ## 11. Engineering quality
 
-- **290 tests, zero failures**, running in 52 seconds — unit tests per module plus end-to-end
-  acceptance tests per milestone, including a full raw-XTF → reports run.
+- **371 tests, zero failures** — unit tests per module plus end-to-end acceptance tests per
+  milestone, including a full raw-XTF → reports run.
 - **`ruff` clean** across all 8 packages (E, F, W, I, N, UP, B).
 - **Every stage config-driven** — no magic numbers in code; defaults live in one place and the YAML
   mirrors them.
@@ -703,7 +729,8 @@ Stated plainly, because a prototype that hides its edges is not trustworthy:
    Pi 5 + Hailo AI HAT bring-up is in [`edge/raspberry_pi.md`](edge/raspberry_pi.md) (full stack
    on CPU — runnable today) and [`edge/hailo.md`](edge/hailo.md) (HEF compilation; the Hailo
    Dataflow Compiler needs x86-64 Linux). Jetson/TensorRT is [`edge/trt_int8.md`](edge/trt_int8.md).
-   On-device throughput and quantized-model mAP are recorded as "not yet measured" until they are.
+   The exported models themselves are measured on x86 CPU (ONNX parity delta 0.0000; INT8 mAP50
+   0.809 at 3.8 MB); on-accelerator throughput stays "not yet measured" until it is.
 5. **The State Emblem is not used** (it is legally restricted). The header renders an Ashoka Chakra,
    with a marked slot for an official asset if the submission is entitled to one.
 6. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled
@@ -711,7 +738,7 @@ Stated plainly, because a prototype that hides its edges is not trustworthy:
 7. **Not an official Government of India website** — the console states this in its footer.
 8. **The multipath flag's precision is unvalidated.** The geometry is right and tested — a second
    bottom return lands at `A·√3` — but the scene simulator renders no multipath, so on synthetic
-   data every flag is a false positive by construction (4 of 14 on the sample survey). It is
+   data every flag is a false positive by construction (3 of 13 on the sample survey). It is
    advisory only: it never lowers a confidence, and a test pins that inertness by widening the
    band from "nothing" to "almost everything" and asserting confidences stay bit-identical. Read
    it as "check this", never "this is multipath"; assessing its precision needs real survey data.
@@ -727,7 +754,10 @@ Code: MIT (see [`LICENSE`](LICENSE)). Ultralytics YOLOv8 is AGPL-3.0 — relevan
 detector is redistributed.
 
 Public datasets referenced by `scripts/download_datasets.py` carry their own licenses (CC BY-NC-SA,
-CC-BY, BSD-3) and are attributed in the table it prints. Basemap imagery: Esri World Imagery
+CC-BY, BSD-3) and are attributed in the table it prints. The shipped detector weights are trained
+on **UATD** (CC BY 4.0 — cite Xie et al.) and **KLSG** (images contributed by L-3 Klein Associates,
+EdgeTech, Lcocean, Hydro-tech Marine and Tritech; released for academic use — this build must not
+be commercialised without replacing that data). Basemap imagery: Esri World Imagery
 (Maxar, Earthstar Geographics, GIS community), proxied and cached locally.
 
 Built for **Smart India Hackathon 2026**, Problem Statement **26057**, Ministry of Earth Sciences /
