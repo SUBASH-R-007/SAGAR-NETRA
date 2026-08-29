@@ -192,6 +192,7 @@ def create_app(
         lon: float | None = Form(None),  # noqa: B008 - FastAPI idiom
         heading_deg: float | None = Form(None),  # noqa: B008 - FastAPI idiom
         sensor_depth_m: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        layout: str = Form("combined"),  # noqa: B008 - FastAPI idiom
     ) -> dict[str, str]:
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in UPLOAD_SUFFIXES:
@@ -222,10 +223,20 @@ def create_app(
                     f"range_m ({range_m}) must exceed altitude_m ({altitude_m}): a "
                     "swath only exists beyond the first bottom return",
                 )
+            if layout not in ("combined", "single"):
+                raise HTTPException(
+                    422, f"layout must be 'combined' or 'single', got {layout!r}"
+                )
             parser_kwargs = {
                 "altitude_m": float(altitude_m),
                 "slant_range_m": float(range_m),
                 "start_time": time.time(),
+                # 'combined': a full waterfall, port mirrored left of the nadir
+                # stripe, starboard right — split down the middle. 'single': one
+                # channel only (a target chip, a cropped mosaic) — splitting it
+                # would invent a nadir that is not there and mirror half the
+                # scene, so the whole frame is treated as starboard.
+                "combined": layout == "combined",
             }
             if sensor_depth_m is not None:
                 parser_kwargs["sensor_depth_m"] = float(sensor_depth_m)

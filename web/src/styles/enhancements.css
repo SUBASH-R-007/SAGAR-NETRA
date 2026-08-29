@@ -245,3 +245,16 @@
 }
 .geom-cell .num-input { width: 100%; }
 .geom-actions { display: flex; gap: 8px; }
+
+/* Image-layout selector in the geometry form: one full-width row above the
+   numeric grid, same control chrome as the numeric inputs. */
+.geom-wide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.geom-wide select {
+  width: 100%;
+}
