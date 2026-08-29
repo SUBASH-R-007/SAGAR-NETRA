@@ -10,7 +10,7 @@ Smart India Hackathon 2026 · Problem Statement **26057** · Ministry of Earth S
 | | |
 |---|---|
 | **Status** | Complete end-to-end prototype, all 8 milestones + 7 hardening rounds |
-| **Tests** | **361 passing**, 0 failures, `ruff` clean across 8 packages |
+| **Tests** | **371 passing**, 0 failures, `ruff` clean across 8 packages |
 | **Code** | 15,813 lines Python (9,854 library) · 3,395 lines frontend · 112 Python modules |
 | **Cloud dependency** | **None.** Zero network calls at inference |
 | **Input formats** | XTF · EdgeTech JSF · Lowrance SL2/SL3 · Humminbird DAT/SON · GeoTIFF · PNG/JPG |
@@ -132,18 +132,21 @@ Or containerised: `docker compose up --build` (add `--profile postgis` for a sho
 narrates the whole flow on the bundled survey and prints the contact table:
 
 ```
-Done in 13.0 s: 1200 pings -> 18 tiles -> 17 raw detections -> 14 verified contacts
+Done in 10 s: 1200 pings -> 18 tiles -> 17 raw detections -> 13 verified contacts
 
 ID                   class           conf%   sev   H(m)  position
-SN-20260101-0002     ghost_net        75.8  83.7    1.3  13.05016, 80.35064
-SN-20260101-0003     ghost_net        66.1  82.8    0.9  13.05027, 80.35195
-SN-20260101-0005     ghost_net        57.3  80.4    0.7  13.04986, 80.35073
-SN-20260101-0001     wreck           100.0  79.9    3.0  13.04975, 80.35035
-SN-20260101-0006     container        46.6  77.3    2.4  13.04981, 80.35148
-SN-20260101-0004     mine_like        63.5  75.6    0.9  13.04970, 80.35095
+SN-20260101-0002     ghost_net        96.8  83.7    1.3  13.05016, 80.35064
+SN-20260101-0005     ghost_net        61.9  80.7    0.7  13.04986, 80.35073
+SN-20260101-0001     wreck           100.0  79.9    3.0  13.04976, 80.35035
+SN-20260101-0004     aircraft         64.6  79.8    3.0  13.04975, 80.35035
+SN-20260101-0007     container        50.8  77.3    2.4  13.04981, 80.35148
+SN-20260101-0008     mine_like        38.9  73.1    0.2  13.05011, 80.35117
 ...
-SN-20260101-0014     unknown_anomaly  10.6  62.7      -  13.05040, 80.35008
+SN-20260101-0011     unknown_anomaly  11.5  62.7      -  13.05040, 80.35008
 ```
+
+*(Output of the real-data-trained detector under honest calibration, T = 1.05 — the top
+ghost net at 96.8% was 75.8% under the old synthetic-only model's stretched temperature.)*
 
 Note the ranking: severity puts **ghost nets at the top even when their confidence is lower than
 the wreck's** — because entanglement hazard, not detector certainty, is what a cleanup crew
@@ -696,8 +699,11 @@ Stated plainly, because a prototype that hides its edges is not trustworthy:
    published). *"SAGAR-NETRA beats classical sonar software"* is **not** a claim this repository
    supports.
 3. **INT8 is a size win here, not a speed win** — the speed claim needs Jetson TensorRT hardware.
-4. **Jetson and Hailo paths are documented runbooks**, not executed measurements — we do not have
-   the devices.
+4. **Accelerator paths are documented runbooks, not yet executed measurements.** The Raspberry
+   Pi 5 + Hailo AI HAT bring-up is in [`edge/raspberry_pi.md`](edge/raspberry_pi.md) (full stack
+   on CPU — runnable today) and [`edge/hailo.md`](edge/hailo.md) (HEF compilation; the Hailo
+   Dataflow Compiler needs x86-64 Linux). Jetson/TensorRT is [`edge/trt_int8.md`](edge/trt_int8.md).
+   On-device throughput and quantized-model mAP are recorded as "not yet measured" until they are.
 5. **The State Emblem is not used** (it is legally restricted). The header renders an Ashoka Chakra,
    with a marked slot for an official asset if the submission is entitled to one.
 6. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled

@@ -450,3 +450,23 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
     real-acoustics competence, not side-scan-specific competence; KLSG's 98.9% is against weak
     boxes; and Brain C still floods on busy real seabed (82.9% of raw detections). Recorded in
     README §11a and the limitations list.
+
+## Edge-ingestion round
+
+35. **The ONNX export was static batch-1 and the deployed pipeline batches -- found by running,
+    not reading.** Detector.detect_tiles sends every tile of a survey as one forward pass; the
+    static export loaded fine and died on the first multi-tile call ("Got: 2 Expected: 1").
+    On the Pi this would have failed during first ingestion. Export is now dynamic=True and the
+    parity probe includes a batched pass, so a static export can never be blessed again. The
+    fixed export from the real-trained detector: mAP50 delta pytorch-vs-ONNX 0.0000 on 905 val
+    images; INT8 costs 1.4 points (0.823 -> 0.809) for 12.7 -> 3.8 MB.
+36. **The Hailo runbook did not exist; the README claimed it did.** edge/hailo.md now documents
+    the ONNX -> HEF path honestly (the Dataflow Compiler needs x86-64 Linux -- WSL2, not Windows,
+    not the Pi), with in-domain calibration and a measure-before-claiming rule. edge/raspberry_pi.md
+    is the CPU-first full-stack bring-up: the HAT accelerates Brain A only, so the system must
+    come up on CPU before the accelerator enters the story. Brain A on the Pi runs from
+    detector.onnx via onnxruntime with a one-line config change -- verified through the real
+    pipeline on this machine, batched.
+37. **x86 benchmark refreshed with the new model at imgsz 640**: ONNX RT CPU 33.4 tiles/s,
+    PyTorch CPU 15.5, INT8 3.4 (the INT8 remains a size win on x86, not a speed win -- unchanged
+    conclusion, new numbers).
