@@ -154,29 +154,60 @@ def list_datasets() -> None:
     print("publication or demo that uses their data.")
 
 
+#: A multi-gigabyte transfer WILL stall occasionally; each retry resumes from
+#: the bytes already on disk rather than starting over.
+DOWNLOAD_RETRIES = 8
+
+
 def _download(url: str, dest: Path, timeout_s: float) -> None:
-    """Stream *url* to *dest* with a coarse progress line."""
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp, open(dest, "wb") as fh:
-        total = int(resp.headers.get("Content-Length") or 0)
-        done = 0
-        while True:
-            block = resp.read(DOWNLOAD_CHUNK_BYTES)
-            if not block:
-                break
-            fh.write(block)
-            done += len(block)
-            if total:
-                pct = 100.0 * done / total
-                print(
-                    f"\r  {dest.name}: {done / BYTES_PER_MB:8.1f} MB"
-                    f" / {total / BYTES_PER_MB:.1f} MB ({pct:5.1f}%)",
-                    end="",
-                    flush=True,
-                )
-            else:
-                print(f"\r  {dest.name}: {done / BYTES_PER_MB:8.1f} MB", end="", flush=True)
-        print()
+    """Stream *url* to *dest*, resuming with HTTP Range across stalls.
+
+    A 4.8 GB figshare pull once died at 96.3% on a read timeout and the old
+    implementation threw the 4.6 GB away. Servers that set Content-Length
+    (figshare/Zenodo are S3-backed) accept ``Range: bytes=N-``, so a stall now
+    costs one retry, not the whole transfer. If a server ignores Range and
+    replies 200 with the full body, the partial is truncated and the transfer
+    genuinely restarts — resumption must never splice mismatched bytes.
+    """
+    last_exc: BaseException | None = None
+    for attempt in range(1, DOWNLOAD_RETRIES + 1):
+        done = dest.stat().st_size if dest.exists() else 0
+        headers = {"User-Agent": USER_AGENT}
+        if done:
+            headers["Range"] = f"bytes={done}-"
+            print(f"\n  resuming from {done / BYTES_PER_MB:.1f} MB (attempt {attempt})")
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+                if done and resp.status != 206:
+                    # Server ignored the Range request: start clean.
+                    print("  server does not resume; restarting from zero")
+                    done = 0
+                total = done + int(resp.headers.get("Content-Length") or 0)
+                mode = "ab" if done else "wb"
+                with open(dest, mode) as fh:
+                    while True:
+                        block = resp.read(DOWNLOAD_CHUNK_BYTES)
+                        if not block:
+                            break
+                        fh.write(block)
+                        done += len(block)
+                        if total:
+                            print(
+                                f"\r  {dest.name}: {done / BYTES_PER_MB:8.1f} MB"
+                                f" / {total / BYTES_PER_MB:.1f} MB"
+                                f" ({100.0 * done / total:5.1f}%)",
+                                end="", flush=True,
+                            )
+                        else:
+                            print(f"\r  {dest.name}: {done / BYTES_PER_MB:8.1f} MB",
+                                  end="", flush=True)
+            print()
+            return
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            last_exc = exc
+            print(f"\n  attempt {attempt}/{DOWNLOAD_RETRIES} failed: {exc}")
+    raise last_exc if last_exc is not None else OSError("download failed")
 
 
 def fetch(spec: DatasetSpec, timeout_s: float = DEFAULT_TIMEOUT_S) -> bool:
@@ -195,17 +226,20 @@ def fetch(spec: DatasetSpec, timeout_s: float = DEFAULT_TIMEOUT_S) -> bool:
     else:
         # Download to a temp name and rename on success so an interrupted run
         # (Ctrl+C included) can never leave a truncated file that a later run
-        # would mistake for a complete archive.
+        # would mistake for a complete archive. The .part is deliberately KEPT
+        # on failure — _download resumes it with a Range request next run, and
+        # deleting it once cost a 4.6 GB transfer that had reached 96%.
         part = dest.with_suffix(dest.suffix + ".part")
         print(f"[{spec.name}] downloading {spec.url}")
         try:
             _download(spec.url, part, timeout_s)
             part.replace(dest)
         except BaseException as exc:
-            part.unlink(missing_ok=True)
             if not isinstance(exc, (urllib.error.URLError, OSError, ValueError)):
+                part.unlink(missing_ok=True)  # only corrupt-risk aborts discard it
                 raise
-            print(f"[{spec.name}] WARNING: download failed ({exc}); skipping")
+            print(f"[{spec.name}] WARNING: download failed ({exc}); "
+                  f"partial kept at {part.name} — rerun to resume")
             return False
 
     if dest.suffix.lower() == ".zip" and not zipfile.is_zipfile(dest):
