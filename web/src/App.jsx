@@ -91,7 +91,15 @@ export default function App() {
     let alive = true
     fetchContacts(survey)
       .then((res) => {
-        if (alive) setContacts(res.contacts || [])
+        if (!alive) return
+        const rows = res.contacts || []
+        setContacts(rows)
+        if (rows.length >= 500) {
+          pushToast(
+            'Showing the first 500 contacts - filter by class or confidence to narrow',
+            'info',
+          )
+        }
       })
       .catch((err) => {
         if (alive) {
@@ -108,6 +116,22 @@ export default function App() {
   const onReview = useCallback((updated) => {
     setContacts((cs) => cs.map((c) => (c.id === updated.id ? updated : c)))
   }, [])
+
+  const onDeleteSurvey = useCallback(async () => {
+    if (!survey) return
+    // window.confirm: deliberate friction - this drops every contact and
+    // review verdict for the survey from the store.
+    if (!window.confirm(`Delete survey ${survey} and all its contacts?`)) return
+    try {
+      const { deleteSurvey } = await import('./api')
+      await deleteSurvey(survey)
+      pushToast(`Deleted ${survey}`, 'ok')
+      setSurvey('')
+      refreshSurveys()
+    } catch (err) {
+      pushToast(`Delete failed: ${err.message}`, 'error')
+    }
+  }, [survey, pushToast, refreshSurveys])
 
   const classes = useMemo(() => [...new Set(contacts.map((c) => c.cls))].sort(), [contacts])
 
@@ -207,6 +231,7 @@ export default function App() {
           onMinConf={setMinConf}
           shown={filtered.length}
           total={contacts.length}
+          onDeleteSurvey={onDeleteSurvey}
         />
       )}
 

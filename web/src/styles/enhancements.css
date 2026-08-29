@@ -258,3 +258,16 @@
 .geom-wide select {
   width: 100%;
 }
+
+/* review-note input in the contact popover */
+.pop-notes {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-family: var(--sans);
+  font-size: var(--fs-small, 0.8125rem);
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--ink);
+}

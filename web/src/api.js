@@ -34,6 +34,9 @@ export const fetchContacts = (survey, limit = 500) =>
 
 export const fetchLayers = () => getJSON('/api/layers')
 
+export const deleteSurvey = (name) =>
+  fetch(`/api/surveys/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(handle)
+
 export const fetchJobs = () => getJSON('/api/jobs')
 
 export const fetchJob = (jobId) => getJSON(`/api/jobs/${encodeURIComponent(jobId)}`)

@@ -4,6 +4,22 @@ import 'leaflet.heat'
 import { CircleMarker, GeoJSON, MapContainer, Popup, TileLayer, useMap } from 'react-leaflet'
 import { fetchLayers } from '../api'
 import { SEVERITY_BANDS, prettyName, sevColor } from '../utils'
+
+// Fly the viewport to wherever the survey's contacts actually are. Without
+// this the map stayed hard-centred on the demo coast: a survey geotagged
+// anywhere else rendered its markers thousands of kilometres off-screen and
+// the operator saw an empty sea, which reads as "nothing found".
+function FitToContacts({ contacts }) {
+  const map = useMap()
+  useEffect(() => {
+    const pts = contacts
+      .filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon))
+      .map((c) => [c.lat, c.lon])
+    if (!pts.length) return
+    map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 16 })
+  }, [contacts, map])
+  return null
+}
 import ContactPopover from './ContactPopover'
 import EmptyState from './EmptyState'
 import MapResize from './MapResize'
@@ -60,6 +76,7 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
     <div className="map-wrap">
       <MapContainer center={CENTER} zoom={13} className="map" preferCanvas>
         <MapResize />
+        <FitToContacts contacts={contacts} />
         {/* Esri World Imagery via the backend's offline-caching proxy. */}
         <TileLayer
           url="/tiles/{z}/{x}/{y}.png"

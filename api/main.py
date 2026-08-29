@@ -217,6 +217,14 @@ def create_app(
                 )
             if altitude_m <= 0 or range_m <= 0:
                 raise HTTPException(422, "altitude_m and range_m must be positive")
+            if lat is not None and not -90.0 <= lat <= 90.0:
+                raise HTTPException(422, f"lat {lat} is outside [-90, 90]")
+            if lon is not None and not -180.0 <= lon <= 180.0:
+                raise HTTPException(422, f"lon {lon} is outside [-180, 180]")
+            if (lat is None) != (lon is None):
+                raise HTTPException(
+                    422, "lat and lon must be supplied together or not at all"
+                )
             if range_m <= altitude_m:
                 raise HTTPException(
                     422,
@@ -361,6 +369,22 @@ def create_app(
     @app.get("/api/surveys")
     def surveys() -> list[dict[str, Any]]:
         return app.state.repo.surveys()
+
+    @app.delete("/api/surveys/{name}")
+    def delete_survey(name: str) -> dict[str, Any]:
+        """Remove a survey and its contacts from the store.
+
+        Exists for console hygiene: a mistaken test upload should not need
+        SQLite surgery to undo. Report files under outputs/ are left on disk
+        on purpose - deleting rows is reversible by re-uploading, deleting
+        generated evidence is not.
+        """
+        removed = app.state.repo.delete_survey(name)
+        if removed == 0 and not any(
+            s["name"] == name for s in app.state.repo.surveys()
+        ):
+            raise HTTPException(404, f"unknown survey {name!r}")
+        return {"survey": name, "contacts_removed": removed}
 
     @app.get("/api/contacts")
     def contacts(

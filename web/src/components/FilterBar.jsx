@@ -1,6 +1,7 @@
 export default function FilterBar({
   surveys,
   survey,
+  onDeleteSurvey,
   onSurvey,
   classes,
   cls,
@@ -23,6 +24,16 @@ export default function FilterBar({
             </option>
           ))}
         </select>
+        {survey && onDeleteSurvey && (
+          <button
+            type="button"
+            className="btn tiny danger"
+            title="Delete this survey and all its contacts"
+            onClick={onDeleteSurvey}
+          >
+            delete
+          </button>
+        )}
       </label>
 
       <label className="ctl">
