@@ -13,3 +13,12 @@ min_blob_px: 40       # minimum connected anomalous area to report (pixels)
 dedup_iou: 0.4        # cross-tile NMS IoU for anomaly boxes
 score_scale: 2.0      # error/threshold ratio that maps to score 1.0
 nadir_guard_cols: 32  # ground columns next to nadir excluded (slant-stretch zone)
+max_blobs_per_tile: 0   # optional per-tile candidate budget (0 = off, the shipped
+                        # setting and the one every published number describes).
+                        # Bounds worst-case cost on cluttered real seabed, but it is
+                        # NOT free: measured over 70 real images, a budget of 16 cut
+                        # candidates 946->635 and detections surviving the 50% floor
+                        # 6->0. Ranking is by raw reconstruction peak while survival
+                        # is decided by highlight/shadow physics, so the two are close
+                        # to anti-correlated. Enable only to trade recall for a hard
+                        # compute ceiling, e.g. fixed edge hardware.

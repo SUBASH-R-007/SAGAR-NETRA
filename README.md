@@ -9,8 +9,8 @@ Smart India Hackathon 2026 · Problem Statement **26057** · Ministry of Earth S
 
 | | |
 |---|---|
-| **Status** | Complete end-to-end prototype, all 8 milestones + 2 hardening rounds |
-| **Tests** | **290 passing**, 0 failures (52 s), `ruff` clean across 8 packages |
+| **Status** | Complete end-to-end prototype, all 8 milestones + 7 hardening rounds |
+| **Tests** | **371 passing**, 0 failures, `ruff` clean across 8 packages |
 | **Code** | 15,813 lines Python (9,854 library) · 3,395 lines frontend · 112 Python modules |
 | **Cloud dependency** | **None.** Zero network calls at inference |
 | **Input formats** | XTF · EdgeTech JSF · Lowrance SL2/SL3 · Humminbird DAT/SON · GeoTIFF · PNG/JPG |
@@ -112,9 +112,14 @@ Five layers, each independently testable, each with its own config file and test
 ```bash
 python -m venv .venv
 .venv/Scripts/pip install -e ".[dev,ml,api,geo]"
+cd web && npm install && npm run build && cd ..   # dashboard (generated, not tracked)
 .venv/Scripts/python scripts/make_sample_xtf.py   # deterministic bundled sample survey
 .venv/Scripts/python scripts/demo.py --serve      # full pipeline, console at :8000
 ```
+
+`web/dist` is a build artefact and is not committed, so the frontend step is required on
+a fresh clone: without it the API serves but the console does not. `demo.py --serve` says
+so rather than opening a blank page.
 
 Or containerised: `docker compose up --build` (add `--profile postgis` for a shore station).
 
@@ -127,18 +132,21 @@ Or containerised: `docker compose up --build` (add `--profile postgis` for a sho
 narrates the whole flow on the bundled survey and prints the contact table:
 
 ```
-Done in 13.0 s: 1200 pings -> 18 tiles -> 17 raw detections -> 14 verified contacts
+Done in 10 s: 1200 pings -> 18 tiles -> 17 raw detections -> 13 verified contacts
 
 ID                   class           conf%   sev   H(m)  position
-SN-20260101-0002     ghost_net        75.8  83.7    1.3  13.05016, 80.35064
-SN-20260101-0003     ghost_net        66.1  82.8    0.9  13.05027, 80.35195
-SN-20260101-0005     ghost_net        57.3  80.4    0.7  13.04986, 80.35073
-SN-20260101-0001     wreck           100.0  79.9    3.0  13.04975, 80.35035
-SN-20260101-0006     container        46.6  77.3    2.4  13.04981, 80.35148
-SN-20260101-0004     mine_like        63.5  75.6    0.9  13.04970, 80.35095
+SN-20260101-0002     ghost_net        96.8  83.7    1.3  13.05016, 80.35064
+SN-20260101-0005     ghost_net        61.9  80.7    0.7  13.04986, 80.35073
+SN-20260101-0001     wreck           100.0  79.9    3.0  13.04976, 80.35035
+SN-20260101-0004     aircraft         64.6  79.8    3.0  13.04975, 80.35035
+SN-20260101-0007     container        50.8  77.3    2.4  13.04981, 80.35148
+SN-20260101-0008     mine_like        38.9  73.1    0.2  13.05011, 80.35117
 ...
-SN-20260101-0014     unknown_anomaly  10.6  62.7      -  13.05040, 80.35008
+SN-20260101-0011     unknown_anomaly  11.5  62.7      -  13.05040, 80.35008
 ```
+
+*(Output of the real-data-trained detector under honest calibration, T = 1.05 — the top
+ghost net at 96.8% was 75.8% under the old synthetic-only model's stretched temperature.)*
 
 Note the ranking: severity puts **ghost nets at the top even when their confidence is lower than
 the wreck's** — because entanglement hazard, not detector certainty, is what a cleanup crew
@@ -166,6 +174,39 @@ Every script has a `--smoke` profile that finishes in under a minute for CI.
 ---
 
 ## 5. Layer by layer — what is actually implemented
+
+### The sonar physics, and where each relationship is used
+
+Side-scan imagery is an acoustic reflectance map, not a photograph. Twelve relationships
+govern what it can and cannot show, and each one below is *computed* somewhere in the
+pipeline — the figures in the last column come from `configs/sonar.yaml`, not from prose.
+
+| Physics | Relation | Implemented in |
+|---|---|---|
+| Waterfall formation | nadir at centre, port mirrored left | [`sonar_core/waterfall.py`](sonar_core/waterfall.py) |
+| Range from time | `R = c·t/2` | [`parsers/jsf.py`](sonar_core/parsers/jsf.py) (from sampling interval + header sound speed); [`geometry.py`](sonar_core/geometry.py) |
+| Slant → ground range | `G = √(R² − A²)` | [`preprocess/slant_range.py`](sonar_core/preprocess/slant_range.py), per-ping altitude |
+| Water column | dead zone to first bottom return | [`preprocess/bottom_track.py`](sonar_core/preprocess/bottom_track.py) — tracked per ping, not assumed |
+| TVG / gain banding | residual range-dependent gain | [`preprocess/egn.py`](sonar_core/preprocess/egn.py), empirical, nadir-guarded |
+| Speckle statistics | multiplicative Rayleigh | [`preprocess/despeckle.py`](sonar_core/preprocess/despeckle.py) (Lee) + renderer |
+| Acoustic shadow | `H = A·(x_end − x_far)/x_end` | [`physicheck/shadow.py`](physicheck/shadow.py) — the ground-domain form of `H = L·A/R` |
+| Fan-beam geometry | 0.5° along, 50° across | [`configs/sonar.yaml`](configs/sonar.yaml) |
+| Across-track resolution | `c·τ/2` — **constant with range** | `geometry.py` → **7.5 cm** |
+| Along-track resolution | `θ·R` — **degrades with range** | `geometry.py` → **0.22 m @ 25 m, 0.65 m @ 75 m**; reported per contact as `dims.along_track_resolution_m` |
+| Sound-speed error | 1% of `c` = 1% of every range | charged per contact in `position_accuracy` → **0.75 m at 75 m** |
+| Multipath | 2nd bottom return at `A·√3` | `physicheck/verify.py` → `multipath_suspect` (advisory only — see §12) |
+
+The two resolution limits are the ones that change how a report should be *read*:
+across-track resolution never degrades, so the far swath edge is as sharp as nadir; but
+along-track smear grows linearly, so a length measured at 75 m is three times softer than
+the same length at 25 m. Every contact therefore carries the beam footprint that bounds
+its own `length_m`.
+
+**Not implemented, deliberately:** frequency-dependent absorption (`~f²`). EGN already
+removes residual range-dependent gain *empirically from the data*, which beats subtracting
+a modelled prediction. The frequency trade-off justifies the sensor choice; it is not a
+pipeline computation, and adding a parameter nothing reads would be a magic number with a
+physics-shaped excuse.
 
 ### L1 · SonicPrep — ingestion and signal conditioning
 
@@ -210,7 +251,7 @@ plus `unknown_anomaly`, an ensemble-level open-set label (not a training class).
 
 | Brain | Model | Role | Trained result |
 |---|---|---|---|
-| **A** | YOLOv8n × 3 seeds, deep ensemble | Rigid debris — boxes | mAP50 **0.656** / 0.651 / 0.587 (P 0.552, R 0.878) |
+| **A** | YOLOv8n, real-data trained (GPU) | Rigid debris — boxes | mAP50 **0.834** on the UATD+KLSG+synthetic mix; **0.819 on real annotated boxes** |
 | **B** | U-Net, ~1.9 M params, pure torch | Ghost nets & ropes — pixel masks | val Dice **0.924** |
 | **C** | Convolutional autoencoder | Open-set: "this does not belong here" | threshold auto-calibrated at train time |
 
@@ -265,7 +306,9 @@ container's 10.16 m shadow yields 2.36 m against a seeded truth of 2.4 m.*
 
 ![Calibration](docs/images/calibration.png)
 
-*Reliability diagrams before and after temperature scaling: **ECE 0.204 → 0.146** at T = 2.54.
+*Reliability diagrams before and after temperature scaling: **ECE 0.073** at T = 1.05 — the
+real-data-trained detector is nearly calibrated out of the box (the synthetic-only one needed
+T = 2.54 to get ECE down to 0.146).
 A displayed "70%" now means roughly 70% of such detections are real.*
 
 ### L4 · GeoScribe — geotagging, severity and reports
@@ -299,6 +342,28 @@ A displayed "70%" now means roughly 70% of such detections are real.*
 - **Recovery routing** — geodesic union-find clustering into recovery zones, then nearest-neighbour
   + 2-opt ordering within and across clusters.
 
+### Physics Lab — the acoustics, made interactive
+
+A console tab with three live models. Each one calls the **deployed backend** —
+`sonar_core.geometry` and `physicheck.shadow` — rather than re-deriving the formulas in
+JavaScript, so the lab and the pipeline cannot drift apart.
+
+| Panel | What a visitor can do | Endpoint |
+|---|---|---|
+| **Height from shadow** | Drag altitude / height / range; watch the ray diagram redraw, the shadow forward-model, and the deployed estimator invert it back to the height it started from | `POST /api/physics/shadow` |
+| **What the sonar can resolve** | Change beam width and pulse length; see across-track stay flat and along-track climb with range | `GET /api/physics/geometry` |
+| **Build a seabed** | Place objects, render them through the real L1 chain, then measure each height back from its shadow against the truth the renderer used | `POST /api/physics/simulate` |
+
+The shadow panel is the one to demo. At 10 m altitude a 2 m object throws a **5 m shadow
+— a 2.5× lever**; raise it to 4 m and the shadow reaches 13.3 m, because the gain itself
+grows with height. That is the entire argument for measuring the shadow instead of the
+object, and a judge can drive it themselves.
+
+The scene builder is honest by construction: the measured column is allowed to disagree
+with the truth column, and the error is shown. On the shipped default scene it recovers
+three objects to a **mean absolute height error of 0.10 m** — from shadow geometry alone,
+with no model and no training.
+
 ### L5 · DRISHTI Console
 
 A React 18 + Vite + Leaflet single-page console served by FastAPI, skinned as a **Government of
@@ -331,19 +396,87 @@ one detection pass re-scored four ways:
 
 | Configuration | Precision | Recall | F1 | PR-AUC | **FP / km²** |
 |---|---|---|---|---|---|
-| (a) raw detector | 0.294 | 0.588 | 0.392 | 0.486 | **469.2** |
-| (b) + physics gate | 0.583 | 0.618 | 0.600 | 0.594 | **146.6** |
-| (c) + ML verifier | 0.667 | 0.588 | 0.625 | 0.627 | **97.8** |
-| (d) + temporal persistence *(deployed)* | 0.667 | 0.588 | 0.625 | 0.627 | **97.8** |
+| (a) raw detector | 0.270 | 0.588 | 0.370 | 0.514 | **527.9** |
+| (b) + physics gate | 0.538 | 0.618 | 0.575 | 0.472 | **176.0** |
+| (c) + ML verifier | 0.528 | 0.559 | 0.543 | 0.425 | **166.2** |
+| (d) + temporal persistence *(deployed)* | 0.528 | 0.559 | 0.543 | 0.425 | **166.2** |
 
-**False alarms per km² drop 4.8× while recall holds.** Rows (c) and (d) coincide because the
-ensemble consensus already suppresses 1–2-ping impulsive returns; the temporal gate is the
-backstop for single-model operation.
+**False alarms per km² drop 3.2× at held recall.** (Measured with the real-data-trained
+detector; the earlier synthetic-only stack showed 4.8× — the new detector proposes more
+candidates on synthetic scenes, so the gate works harder for a slightly smaller ratio.)
+Rows (c) and (d) coincide because consensus already suppresses 1–2-ping impulsive returns.
 
 > **Read honestly:** these are *synthetic* held-out scenes. Synthetic targets are easier than real
 > debris in real clutter, so treat the absolute values as an upper bound and the **relative ladder**
 > as the result. The path to real-data numbers is `scripts/download_datasets.py` plus the
 > active-learning flywheel.
+
+### Against a classical baseline — an honest negative result
+
+The ablation above measures SAGAR-NETRA against *itself*. It cannot answer the question a
+reviewer asks first: **is any of this better than what survey teams already run?** So we built
+the comparator — [`tridentnet/baseline.py`](tridentnet/baseline.py), a faithful reimplementation
+of the threshold-and-blob CAD scheme that side-scan software used before learned detectors — and
+scored it through the same matcher and the same metric code.
+
+From [`docs/baseline_comparison.md`](docs/baseline_comparison.md): 16 held-out scenes, 66 truth
+boxes, 0.205 km². Hyperparameters for **both** families are selected on a separate 8-scene tuning
+split (seed base 11000) and applied unchanged. Scoring is localization-only, because a blob
+detector emits no class and penalising it for that would be scoring a task it never attempts.
+
+| Method | P | R | F1 | PR-AUC | FP/km² | Classifies? |
+|---|---|---|---|---|---|---|
+| Classical: threshold + blob | 0.904 | 0.712 | 0.797 | **0.917** | **24.3** | no |
+| Classical: + shadow gate | 0.841 | 0.803 | **0.822** | 0.828 | 48.7 | no |
+| SAGAR-NETRA: detector only, no physics | 0.171 | 0.652 | 0.270 | 0.569 | 1017.5 | yes |
+| SAGAR-NETRA: full stack *(shipped 50% floor)* | 0.759 | 0.667 | 0.710 | 0.738 | 68.2 | yes |
+
+![Classical baseline vs SAGAR-NETRA](docs/images/comparison.png)
+
+**The tuned classical baseline beats the deployed stack at localization on this benchmark.** We
+publish that rather than hide it. Three things are worth understanding about why.
+
+**1. The benchmark is confounded, and we measured by how much.** In the scene simulator
+`rock_cluster` — the only natural clutter class — has reflectivity **2.0–3.0**, the lowest of any
+class, while most man-made targets sit at **4.0–8.0**. Brightness is therefore very nearly the
+man-made/natural label, and a brightness threshold is handed the answer by the data generator.
+Real sonar offers no such gap. [`docs/clutter_sweep.md`](docs/clutter_sweep.md) removes the
+shortcut by giving decoy rocks the reflectivity of real targets, changing nothing else:
+
+![Clutter sweep](docs/images/clutter.png)
+
+| Precision lost, +0 → +24 decoy rocks | Classical | SAGAR-NETRA |
+|---|---|---|
+| `native` — brightness gap intact | −0.630 | −0.618 |
+| `matched` — gap removed | **−0.734** | **−0.632** |
+| **Cost of removing the shortcut** | **−0.104** | **−0.014** |
+
+Removing the shortcut costs the classical detector **7× more precision** than it costs us —
+consistent with a method reading shape and shadow rather than amplitude. It explains part of the
+baseline's lead. It does not erase it: classical still holds higher absolute precision at every
+clutter level.
+
+**2. One result in that table is immune to the confound**, because both rows score *identical*
+detections from the same detector: the physics and verifier stages take false alarms from
+**1018 to 68 per km² — a 15× cut** — at comparable recall. That is the ablation result, and it
+stands whatever the baseline does.
+
+Rows (1) and (2) are *not* a shadow-gate ablation — each variant is tuned independently and they
+land on different `k_sigma`. Ablated properly, with only the gate changing, the shadow
+requirement raises precision **where detection is hard** (+0.13 at k=1, +0.23 at k=3) but costs
+recall, and at the permissive thresholds this baseline prefers it is net-negative on F1
+(0.909 → 0.848 at k=0.25). The cue is real but conditional; we do not claim it as a free win.
+
+**3. What the baseline cannot do at any threshold** is the `Classifies?` column. It localizes.
+It cannot name a class, invert shadow length into height, score severity against habitat and
+shipping layers, or populate a report. That gap is architectural, not a matter of tuning.
+
+The likeliest reason the learned stack did not pull ahead is that a clean simulated seabed of
+high-contrast targets is exactly the regime a tuned threshold is best at — compounded, at the
+time of this comparison, by a detector trained on 172 synthetic tiles (that detector has since
+been retrained on real data, section 6; this table predates the retrain and is kept as
+published rather than re-run, because the confound it documents is about the *benchmark*, not
+the model).
 
 ### Throughput ([`edge/benchmark.md`](edge/benchmark.md), CPU only)
 
@@ -366,11 +499,11 @@ A side-scan sonar produces 1–10 ping lines per second. The pipeline runs far a
 
 | Item | Result |
 |---|---|
-| Brain A detector (30 epochs, imgsz 512) | mAP50 **0.656**, mAP50-95 0.559, precision 0.552, recall 0.878 |
-| Deep-ensemble members | mAP50 0.656 / 0.651 / 0.587 |
+| Brain A detector (60 epochs, imgsz 640, RTX 4060) | mAP50 **0.834** mixed val; **0.819 real boxes** (UATD); 0.808 synthetic |
+| Training data | 7,838 images (88% real sonar), **12,616 real annotated boxes** |
 | Brain B segmenter (60 epochs) | val Dice **0.924**; mask alignment verified to **0.02 px** |
 | Stage-2 verifier | held-out AUC **0.955**, accuracy **0.957** |
-| Confidence calibration | ECE **0.204 → 0.146**, T = 2.54 |
+| Confidence calibration | ECE **0.073**, T = 1.05 (refit after the real-data retrain) |
 | ONNX export parity | mAP50 delta **0.0000** vs PyTorch |
 | Height from shadow | seeded 2.0 m recovered within 25%; 2.4 m container measured at 2.36 m |
 | Geotag accuracy | within **6%** of seeded across-track offset |
@@ -514,22 +647,75 @@ range at 8 m altitude.
 
 ---
 
+## 11a. First contact with real sonar
+
+![Real sonar before and after conditioning](docs/images/real_data.png)
+
+*Real KLSG shipwreck imagery as supplied (left) and after the L1 chain (right). The
+highlight-and-shadow structure the physics gate keys on is unmistakable in real data.*
+
+The pipeline has now been run over **447 real side-scan images** — 385 shipwrecks and 62
+aircraft from L-3 Klein Associates, EdgeTech, Lcocean, Hydro-tech Marine and Tritech
+(KLSG, academic use). Full report: [`docs/real_data.md`](docs/real_data.md).
+
+**What transfers:** all 447 parse and run the complete signal chain — bottom tracking,
+slant correction, despeckle, CLAHE, tiling — with no per-format handling and no crashes.
+
+**The detector was then retrained on real data** — 7,838 images (88% real sonar:
+UATD's 12,616 human-annotated boxes plus KLSG chips), 60 GPU epochs. Before/after on
+this same corpus, same harness ([`docs/real_training.md`](docs/real_training.md)):
+
+| measure | synthetic-only detector | real-data-trained |
+|---|---|---|
+| wreck images reaching `wreck`/`aircraft` (full pipeline) | 53 / 385 (13.8%) | **359 / 385 (93.2%)** |
+| KLSG val chips, top-1 correct class | 11.4% | **98.9%** |
+| mAP50 on real annotated boxes (UATD val) | 0.002 | **0.819** |
+| synthetic val (regression check) | 0.701 | **0.808** — improved, not traded |
+
+Brain C still floods on busy real seabed (82.9% of raw detections; two candidate fixes
+were measured and rejected — `docs/real_data.md` has both), so the physics gate remains
+what makes the output usable. The claim, updated honestly:
+
+> The **signal chain** works on real sonar from five manufacturers, and the **detector**
+> is now trained on real acoustics — mAP50 0.819 against real human-drawn boxes. The
+> remaining gap is domain (forward-looking training data vs side-scan deployment) and the
+> open-set brain, both measured.
+
+---
+
 ## 12. Honest limitations
 
 Stated plainly, because a prototype that hides its edges is not trustworthy:
 
-1. **Model metrics are on synthetic held-out data.** The blueprint target of ≥0.90 mAP@50 refers to
-   published results on real KLSG/SCTD benchmarks after full training campaigns. Our 0.656 is
-   honest closed-world synthetic performance. The real-data path is scripted, not yet run.
-2. **INT8 is a size win here, not a speed win** — the speed claim needs Jetson TensorRT hardware.
-3. **Jetson and Hailo paths are documented runbooks**, not executed measurements — we do not have
-   the devices.
-4. **The State Emblem is not used** (it is legally restricted). The header renders an Ashoka Chakra,
+1. **The detector's real training data is mostly forward-looking sonar.** UATD (88% of the mix)
+   was collected with a multibeam forward-looking sonar, not a side-scan towfish — mAP50 0.819 on
+   its real boxes proves real-acoustics competence, not side-scan-specific competence. The KLSG
+   side-scan numbers (98.9% class-reach) are against weak measured boxes. True side-scan mAP
+   needs an annotated side-scan corpus, which is exactly what the console's review loop collects.
+2. **A tuned classical CAD baseline outperforms us on the synthetic benchmark** — F1 0.822 vs
+   0.710, localization-only. It is published in section 6 rather than hidden. Part of the gap is
+   a simulator confound we quantified (`docs/clutter_sweep.md`); part is a small CPU-trained
+   detector (since retrained on real data — the comparison predates the retrain and is kept as
+   published). *"SAGAR-NETRA beats classical sonar software"* is **not** a claim this repository
+   supports.
+3. **INT8 is a size win here, not a speed win** — the speed claim needs Jetson TensorRT hardware.
+4. **Accelerator paths are documented runbooks, not yet executed measurements.** The Raspberry
+   Pi 5 + Hailo AI HAT bring-up is in [`edge/raspberry_pi.md`](edge/raspberry_pi.md) (full stack
+   on CPU — runnable today) and [`edge/hailo.md`](edge/hailo.md) (HEF compilation; the Hailo
+   Dataflow Compiler needs x86-64 Linux). Jetson/TensorRT is [`edge/trt_int8.md`](edge/trt_int8.md).
+   On-device throughput and quantized-model mAP are recorded as "not yet measured" until they are.
+5. **The State Emblem is not used** (it is legally restricted). The header renders an Ashoka Chakra,
    with a marked slot for an official asset if the submission is entitled to one.
-5. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled
+6. **Sensitive-zone layers are illustrative demo geometry** for the Chennai coast, clearly labelled
    as such — not official maritime boundaries.
-6. **Not an official Government of India website** — the console states this in its footer.
-7. **Deliberate non-goals**, each with a written rationale in `DECISIONS.md`: OpenMax fusion
+7. **Not an official Government of India website** — the console states this in its footer.
+8. **The multipath flag's precision is unvalidated.** The geometry is right and tested — a second
+   bottom return lands at `A·√3` — but the scene simulator renders no multipath, so on synthetic
+   data every flag is a false positive by construction (4 of 14 on the sample survey). It is
+   advisory only: it never lowers a confidence, and a test pins that inertness by widening the
+   band from "nothing" to "almost everything" and asserting confidences stay bit-identical. Read
+   it as "check this", never "this is multipath"; assessing its precision needs real survey data.
+9. **Deliberate non-goals**, each with a written rationale in `DECISIONS.md`: OpenMax fusion
    (Brain C + consensus covers open-set), MC-dropout (YOLOv8n has no dropout layers), and
    diffusion/CycleGAN synthesis (needs GPUs and real style targets).
 

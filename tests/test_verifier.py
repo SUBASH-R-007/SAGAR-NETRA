@@ -127,20 +127,35 @@ def test_verifier_load_missing_raises(tmp_path) -> None:
         PhysicsVerifier.load(tmp_path / "nope.pkl")
 
 
-def test_no_pkl_behaviour_identical_to_golden(scene, monkeypatch, tmp_path) -> None:
-    """Without a trained checkpoint the pipeline must match the pre-integration
-    confidences bit for bit (golden values computed on this exact scene with
-    the Stage-1-only code)."""
+def test_no_pkl_behaviour_identical_to_stage1_only(scene, monkeypatch, tmp_path) -> None:
+    """Without a trained checkpoint the pipeline must match Stage-1-only scoring
+    exactly.
+
+    An earlier version pinned golden confidence values (72.8 / 31.6), which
+    quietly also pinned the calibration temperature they were computed under -
+    the first legitimate refit of ``configs/physics.yaml`` broke the test
+    without breaking the behaviour it guarded. What this test actually
+    protects is the integration seam: a missing checkpoint must degrade to
+    ``use_verifier=False`` scoring bit for bit, whatever the calibration says
+    today. So the expectation is computed through that path in the same run.
+    """
     monkeypatch.setattr(
         "physicheck.verifier.DEFAULT_WEIGHTS_PATH", tmp_path / "absent.pkl"
     )
     pre, cbox, _ = scene
     bg = FakeDetection("starboard", 110, 140, cbox.col0, cbox.col1, "container", 0.8)
-    by_ping0 = {v.det.ping0: v for v in verify_detections([cbox, bg], pre)}
-    assert by_ping0[cbox.ping0].confidence_pct == 72.8  # golden, pre-integration
-    assert by_ping0[bg.ping0].confidence_pct == 31.6  # golden, pre-integration
-    assert by_ping0[cbox.ping0].verifier_p is None
-    assert by_ping0[cbox.ping0].persistence_pings == cbox.ping1 - cbox.ping0 + 1
+
+    no_pkl = {v.det.ping0: v for v in verify_detections([cbox, bg], pre)}
+    stage1 = {
+        v.det.ping0: v for v in verify_detections([cbox, bg], pre, use_verifier=False)
+    }
+    for ping0 in (cbox.ping0, bg.ping0):
+        assert no_pkl[ping0].confidence_pct == stage1[ping0].confidence_pct
+        assert no_pkl[ping0].gate.multiplier == stage1[ping0].gate.multiplier
+    assert no_pkl[cbox.ping0].verifier_p is None
+    assert no_pkl[cbox.ping0].persistence_pings == cbox.ping1 - cbox.ping0 + 1
+    # The container must still outrank empty seabed - calibration-independent.
+    assert no_pkl[cbox.ping0].confidence_pct > no_pkl[bg.ping0].confidence_pct
 
 
 def test_trained_verifier_demotes_background_vs_container(scene, trained_verifier) -> None:

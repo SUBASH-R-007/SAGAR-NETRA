@@ -213,3 +213,260 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
 4. **Same failure class as the streaming flood.** Both were the anomaly brain reacting to imagery
    normalised differently from its calibration set, not to debris. Worth remembering whenever a
    new input path is added: match the normalisation the brains were calibrated on, or recalibrate.
+
+## Baseline-comparison round
+
+1. **The ablation ladder had no floor that wasn't us.** Every published number compared
+   SAGAR-NETRA against SAGAR-NETRA — how much each stage adds. That cannot answer the first
+   question a reviewer asks, which is whether any of it beats what survey teams already run.
+   `tridentnet/baseline.py` adds a faithful classical CAD baseline (per-range-column robust
+   background, threshold at `median + k*sigma`, morphological opening, connected components,
+   area/aspect filters, optional shadow gate) and `scripts/eval_baseline.py` scores it against
+   the deployed stack through the same matcher, the same metric arithmetic and the same scenes.
+2. **The baseline detects on gain-corrected, pre-CLAHE imagery.** The first draft ran it on the
+   enhanced image the learned brains see, where it looked terrible. Measured cause: true targets
+   peak at **8–30 sigma** above the robust per-column background on `ground_raw` but only
+   **1.7–3.2 sigma** after CLAHE, because local contrast equalization compresses exactly the
+   global separation a fixed threshold depends on. Scoring it there would have been a strawman,
+   so `ClassicalConfig.use_raw_imagery` defaults to True.
+3. **Hyperparameters are selected on a separate split, for both families.** An earlier draft
+   swept the baseline's two knobs directly on the evaluation set and reported the best — and the
+   baseline duly "won". That is test-set fitting: with a few dozen truth boxes it manufactures a
+   winner out of noise. Selection now happens on seed base 11000 (disjoint from training seed 0,
+   calibration 9000 and evaluation 12000) and is applied unchanged to the evaluation scenes.
+4. **The simulator encodes the class label in brightness, which confounds the whole comparison.**
+   `rock_cluster` — the only natural clutter class — has reflectivity **2.0–3.0**, the lowest of
+   any class, while most man-made targets sit at **4.0–8.0**. A detector that thresholds on
+   brightness is handed the man-made/natural answer by the data generator. Real sonar has no such
+   gap; a boulder and a steel drum can return comparable amplitude, which is the entire reason
+   the problem needs shape, shadow geometry and learning. Any brightness-threshold-versus-learned
+   comparison on this simulator is therefore structurally biased toward the threshold.
+5. **So clutter is swept under two conditions.** `scripts/eval_clutter.py` holds the debris field
+   fixed and layers nested decoy rock clusters, under `native` (catalogue reflectivity, gap
+   intact) and `matched` (each decoy borrows a real target's reflectivity, gap removed). Every
+   rock is a false positive by construction, so the sweep measures one thing: how fast precision
+   falls as target-shaped natural objects accumulate, with and without the shortcut.
+6. **The two conditions must differ in brightness and nothing else.** Branching on an RNG draw
+   (`rng.uniform` for native, `rng.integers` for matched) consumed different amounts of the bit
+   stream and silently moved every subsequent rock — two unrelated experiments wearing the same
+   label, and the failure produces perfectly plausible tables. Both draws now happen in both
+   modes, in a fixed order; `tests/test_clutter.py::test_modes_place_identical_rocks` pins it.
+7. **The threshold sweep is vectorized because the honest grid is wide.** Widening `k_sigma` down
+   to 0.25 (so the selected value is interior, not clamped at an endpoint) hands the sweep tens of
+   thousands of blobs, and the obvious re-score-at-every-threshold loop is O(n^2) — one run hung
+   in it. Now O(n log n) via a cumulative-TP scan, verified identical to the loop on 300
+   randomized label streams.
+8. **Two suspected handicaps on the baseline were checked and cleared by measurement, not
+   assertion.** The aspect-ratio filter is *inert*: identical F1, precision, recall and FP/km²
+   from `max_aspect=6` through effectively infinite. The area cap was not inert but was close —
+   the largest truth box in the held-out set is an aircraft at ~19.5k px against a 20k cap, one
+   bad seed from silently dropping a real target and charging the miss to the baseline — so it
+   was raised to 100k.
+9. **The confound is real and measured, but it does not rescue the result.** The clutter sweep
+   (12 scenes, 55 man-made truths, nested decoys) shows the classical baseline is far more
+   dependent on the brightness shortcut than the learned stack is. Precision lost between +0 and
+   +24 decoy rocks: classical **-0.630 native vs -0.734 matched**, SAGAR-NETRA **-0.618 native vs
+   -0.632 matched**. Removing the shortcut costs the classical detector an extra **0.104** of
+   precision and costs SAGAR-NETRA **0.014** — roughly a sevenfold difference in sensitivity,
+   which is what you would expect from a method that reads shape and shadow rather than
+   amplitude. But the classical baseline still holds higher absolute precision at every clutter
+   level in both conditions, so the confound explains part of its lead and does not erase it.
+10. **What this licenses us to claim, and what it does not.** On this synthetic benchmark a tuned
+    classical CAD baseline matches or beats the deployed stack at localization, and no amount of
+    reframing changes that. "SAGAR-NETRA outperforms classical sonar software" is therefore **not
+    a supported claim** and must not be presented as one. Three things remain fully supported and
+    are unaffected by the confound, because they compare rows scored from identical detections:
+    the physics and verifier stages cut false alarms roughly **15x** (1018 -> 68 per km²) at
+    comparable recall, both rows scoring identical detections; and the baseline cannot classify,
+    estimate height, score severity or produce a report at any threshold. The likeliest
+    reason the learned stack does not pull ahead is that a clean simulated seabed of
+    high-contrast targets is the regime a tuned threshold is best at, compounded by a small
+    CPU-trained detector (mAP50 0.656, precision 0.552). Settling it needs real survey data, not
+    a louder synthetic table — which is exactly what the dataset and active-learning path is for.
+11. **The published rows (1) and (2) are not a shadow-gate ablation, and an early draft wrongly
+    read them as one.** Each classical variant is tuned independently, so they land on different
+    `k_sigma` and differ in two things at once. Ablated properly — same k, only the gate moving —
+    the shadow requirement raises precision **where detection is hard** (+0.128 at k=1, +0.229 at
+    k=3) but costs recall, and at the permissive thresholds the baseline actually prefers it is
+    net-negative on F1 (0.909 -> 0.848 at k=0.25, 0.899 -> 0.812 at k=0.05). The shadow cue is
+    real and conditional. Claiming it as independent corroboration of Stage-1 would have been
+    unsupported, and the claim was removed from the README and the generated table.
+
+## Sensor-geometry round
+
+11. **An audit of the thirteen claimed physics relationships found five genuinely absent.**
+    Implemented as `sonar_core/geometry.py` + `configs/sonar.yaml`: fan-beam geometry (beam widths
+    were nowhere in the codebase), across-track resolution `c*tau/2`, along-track resolution
+    `theta*R`, the sound-speed term in the position budget, and a multipath range check. The
+    shipped defaults (0.5 deg along-track beam, 100 us pulse) reproduce the quoted textbook
+    figures exactly — 7.5 cm across-track, 0.22 m along-track at 25 m, 0.65 m at 75 m, 0.75 m of
+    range error at 75 m — so those numbers are now *computed from config*, not asserted in prose.
+12. **`R = c*t/2` was already implemented; the audit's first pass said otherwise and was wrong.**
+    `sonar_core/parsers/jsf.py` derives `slant_range` from the recorded sampling interval and the
+    sound speed read from the JSF header at byte 148, which is exactly that relation; Humminbird
+    derives its per-sample footprint from `c/(2*Fs)`. XTF records slant range directly and needs
+    no derivation. `sonar_core.geometry.slant_range_from_time` now states the relation once, with
+    a test asserting it agrees with the JSF adapter so the two cannot drift apart.
+13. **Frequency-dependent absorption was deliberately NOT implemented.** It is the one item on the
+    list with no consumer: EGN already removes the residual range-dependent gain *empirically*,
+    from the data itself, which is strictly better than modelling absorption and subtracting a
+    prediction. Adding an `absorption_db_per_km` parameter that nothing reads would be a magic
+    number with a physics-shaped excuse. The frequency trade-off remains what it always was —
+    justification for the sensor choice, not a pipeline computation.
+14. **The sound-speed term is opt-in at the function boundary.** `position_accuracy` takes
+    `ground_range_m=0.0` and `sv_uncertainty_frac=0.0` by default, so a caller that knows nothing
+    about range gets the previous budget bit-for-bit; only `build_contacts`, which knows both,
+    supplies them. Adding a term to a shared formula is exactly the kind of change that silently
+    moves every number computed by code nobody remembered to update, and a test pins the
+    unchanged-when-unsupplied behaviour.
+15. **The multipath check flags and never demotes, and its precision is unvalidated.** A second
+    bottom return lands at ground range `A*sqrt(3)`, and detections in a +/-15% band around it are
+    marked `multipath_suspect`. It deliberately does not touch the confidence multiplier: real
+    debris does sometimes lie at 1.73 altitudes, and trading a known false-alarm source for an
+    unknown miss is a bad exchange. A test proves the flag is inert by widening the band from
+    "nothing" to "almost everything" and asserting confidences stay bit-identical — without which
+    this addition could have silently changed every published table. **The honest limitation:**
+    the scene simulator renders no second bottom return, so on the synthetic corpus every flag is
+    a false positive by construction (4 of 14 on the sample survey). The *geometry* is tested; the
+    flag's precision can only be assessed on real data, and it is presented as "check this",
+    never as "this is multipath".
+
+## Physics Lab round
+
+16. **The lab calls the deployed physics; it does not re-derive it in the browser.** Every slider
+    in the Physics Lab hits `sonar_core.geometry` or `physicheck.shadow` through
+    `api/physics_lab.py`. A JavaScript copy of `H = A*(x_end - x_far)/x_end` would have been
+    faster and offline-friendlier, and it would have been wrong the first time either formula
+    changed — with no test to catch it, because the copy would keep looking plausible. The cost
+    is a round trip per slider move, debounced to 120 ms; the benefit is that the demo cannot
+    lie about what the product does.
+17. **The scene simulator runs no detector, on purpose.** It renders a user-built seabed through
+    the real L1 chain and then measures each object's height from its shadow, reporting that
+    against the truth the renderer used. Inserting a model between the two would make any
+    disagreement ambiguous — was it the physics or the network? — and the detector is the weakest
+    link in the stack (mAP50 0.656 on 172 synthetic tiles). Detection has its own tabs; this
+    panel isolates the part that works.
+18. **The measured column is allowed to disagree with the truth column, and the error is shown.**
+    A demo that only ever displays agreement is a demo nobody should believe. On the shipped
+    default scene the mean absolute height error is 0.10 m across three objects; when a target is
+    placed where no shadow resolves, the row reads a dash rather than a fabricated number.
+19. **Placements that cannot be imaged are corrected, not rendered as a puzzle.** An object past
+    the usable swath, taller than the towfish, or outside the ping range is clamped into the
+    valid envelope and the panel says the swath limit out loud. The alternative — rendering an
+    empty scene and letting the visitor guess why — teaches nothing about the geometry.
+20. **`model_dump()` writes optional fields as explicit `None`, so `dict.get(key, default)` never
+    fires.** The first simulate request crashed on `float(None)` because every unset target
+    dimension arrived as a present-but-null key. `_pick()` now treats missing and null alike.
+
+## Real-data round
+
+21. **The system has now met real sonar, and the result is split.** KLSG
+    (`SeabedObjects-Ship-and-Airplane-dataset`) supplies 385 real shipwreck and 62 real
+    aircraft side-scan images from five manufacturers -- L-3 Klein, EdgeTech, Lcocean,
+    Hydro-tech Marine, Tritech -- released for academic use. All 447 parse and run the full
+    L1 chain with no per-format handling and no crashes. **The signal chain transfers.**
+22. **The detection models do not transfer, measured over the whole corpus.** 3602 raw
+    detections across 447 images: **85.7% come from Brain C**, the open-set autoencoder,
+    flooding on real seabed texture it has never reconstructed. Brain A reaches for `wreck`
+    or `aircraft` on only **53 of 385 wreck images (13.8%)**. Trained on 172 synthetic tiles,
+    it has never seen a real hull. Only 19 detections survive the shipped 50% floor across
+    the entire corpus, so the physics gate is visibly the only thing holding the output
+    together.
+23. **Domain-adapting Brain C on real seabed was attempted and rejected.** Training on the
+    border bands of the 81 KLSG chips large enough to have a margin clear of their centred
+    target (`--klsg`) produced no operating point worth shipping: at its own calibrated
+    threshold the real flood halves (539 -> 307) but synthetic false anomalies triple
+    (15 -> 45) and the demo gains two contacts that are not there; at the shipped threshold
+    the flood drops 71% (539 -> 157) but open-set detection stops dead -- zero
+    `unknown_anomaly` contacts, which is the whole reason Brain C exists. One small
+    convolutional autoencoder with a single global threshold cannot span two domains this
+    different on 324 border bands. **The shipped weights were left unchanged**, so every
+    published table remains valid, and the retrained checkpoint stays out of the deployed
+    path. The likelier fix is matching the domains' statistics in preprocessing rather than
+    asking one autoencoder to cover both.
+24. **KLSG has class folders but no bounding boxes**, so it cannot train a detector directly.
+    Weakly supervised fine-tuning on its target-centred chips is the remaining path, and its
+    pseudo-boxes would be approximate -- any mAP from it is not comparable to the synthetic
+    numbers and must not be quoted beside them.
+25. **The SCTD download URL 404s** as of 2026-08-29; the upstream repository has moved or been
+    renamed. Recorded in the dataset spec rather than silently left to fail again.
+26. **The diagnosis behind decision 23 was wrong, and measuring it changed the conclusion.**
+    Retraining Brain C on real seabed assumed the autoencoder reconstructs real texture
+    *badly*. Measured against the shipped checkpoint, the opposite holds: real KLSG imagery
+    reconstructs **better** than synthetic — median error 0.0405 against 0.0688, with
+    **0.61%** of pixels over the threshold against **1.49%**. Error magnitude was never the
+    problem, so the retraining in decision 23 was treating something that was not broken,
+    which is why no operating point helped.
+27. **What actually diverges is spatial coherence, not error.** Synthetic speckle is
+    incoherent, so its above-threshold pixels are scattered singletons that `min_blob_px`
+    discards. Real seabed structure — sand ripples, rock fields, wreck framing — is
+    coherent, so the same fraction of pixels forms connected blobs that survive. Per tile:
+    a synthetic **maximum of 12** blobs against a real **median of 12 and maximum of 62**.
+    Brain C is answering honestly; a boulder field genuinely is unlike flat sediment.
+28. **A per-tile candidate budget was implemented, measured, and shipped disabled.**
+    Capping each tile at its highest-scoring blobs bounds worst-case cost and is bit-identical
+    on synthetic scenes (6 seeds, box for box). On real data it is actively harmful: over 70
+    KLSG images a budget of 16 cut candidates 946 -> 635 but cut detections surviving the 50%
+    floor **6 -> 0**; even at 48 it still costs one. The ranking is by raw reconstruction
+    peak while survival is decided by highlight/shadow physics, so a texture blob can outrank
+    a real target the gate would later promote — the two criteria are close to
+    anti-correlated. `max_blobs_per_tile` therefore defaults to **0**, the cost table is
+    attached to it in code and config, and a test pins the default so it cannot be enabled
+    silently. It remains available as a deliberate recall-for-compute trade on fixed edge
+    hardware, which is the one case that justifies it.
+29. **Two hypotheses tested, two rejected, nothing shipped that looks like a win.** The
+    round produced no improvement to real-data behaviour. What it produced is the correct
+    mechanism, two measured dead ends, and unchanged published numbers — which is worth more
+    than a plausible fix that had never been checked against what survives the floor.
+
+## Real-training round
+
+30. **The detector was retrained on real data and swapped in, gated, with rollback.** The mix:
+    7,838 images — UATD 88% (12,616 real human-annotated boxes, CC BY 4.0, multibeam
+    forward-looking domain), KLSG 4.5% (weak measured boxes), synthetic 7.5% (100 scenes).
+    YOLOv8n, 60 epochs, imgsz 640, RTX 4060, 4.9 h (workers=0 made it dataloader-bound at ~305
+    s/epoch with the GPU near idle — on Windows the spawn-deadlock guard costs ~4x wall-clock on
+    real-image datasets; WSL2 or cache="ram" is the escape, noted for next time). Gates before
+    the swap, one harness, baseline and candidate together: synthetic val 0.701 -> 0.808
+    (improved, not traded), KLSG class-reach 11.4% -> 98.9%, real-box mAP50 0.002 -> 0.819,
+    demo smoke sane. Old weights kept at weights/detector_synth_backup.pt.
+31. **The ensemble list was cut to the single real-trained member.** detector_seed1/2 are still
+    synthetic-only; consensus fusion demands corroboration, so leaving them in would let two
+    synthetic-only voters veto exactly the real-sonar detections the retrain bought. The config
+    documents the command to retrain seeds on the same mix before re-adding them.
+32. **Calibration and the verifier were refit as part of the swap, not later.** Temperature
+    2.544 -> 1.050 (the new detector is nearly calibrated out of the box; ECE 0.073, scene
+    accuracy 47.8% -> 72.3%) and verifier retrained on the new detector's detections (held-out
+    AUC 0.955). A golden test that pinned confidence values 72.8/31.6 broke — it had silently
+    pinned the old temperature. Rewritten to pin the behaviour it actually guards (missing
+    checkpoint == Stage-1-only scoring, computed in the same run), which survives any legitimate
+    recalibration.
+33. **The ablation ladder was regenerated and got less flattering: 4.8x -> 3.2x.** The new
+    detector proposes more candidates on synthetic scenes (93 vs 84), so the gate works harder
+    for a smaller ratio (527.9 -> 166.2 FP/km²). Published as measured; quoting the old 4.8x
+    next to the new detector would be stitching numbers from two different systems.
+34. **Full-pipeline wreck-reach on the 447-image real corpus: 53/385 -> 359/385 (93.2%).** The
+    honest boundary that remains: UATD is forward-looking sonar, so 0.819 real-box mAP proves
+    real-acoustics competence, not side-scan-specific competence; KLSG's 98.9% is against weak
+    boxes; and Brain C still floods on busy real seabed (82.9% of raw detections). Recorded in
+    README §11a and the limitations list.
+
+## Edge-ingestion round
+
+35. **The ONNX export was static batch-1 and the deployed pipeline batches -- found by running,
+    not reading.** Detector.detect_tiles sends every tile of a survey as one forward pass; the
+    static export loaded fine and died on the first multi-tile call ("Got: 2 Expected: 1").
+    On the Pi this would have failed during first ingestion. Export is now dynamic=True and the
+    parity probe includes a batched pass, so a static export can never be blessed again. The
+    fixed export from the real-trained detector: mAP50 delta pytorch-vs-ONNX 0.0000 on 905 val
+    images; INT8 costs 1.4 points (0.823 -> 0.809) for 12.7 -> 3.8 MB.
+36. **The Hailo runbook did not exist; the README claimed it did.** edge/hailo.md now documents
+    the ONNX -> HEF path honestly (the Dataflow Compiler needs x86-64 Linux -- WSL2, not Windows,
+    not the Pi), with in-domain calibration and a measure-before-claiming rule. edge/raspberry_pi.md
+    is the CPU-first full-stack bring-up: the HAT accelerates Brain A only, so the system must
+    come up on CPU before the accelerator enters the story. Brain A on the Pi runs from
+    detector.onnx via onnxruntime with a one-line config change -- verified through the real
+    pipeline on this machine, batched.
+37. **x86 benchmark refreshed with the new model at imgsz 640**: ONNX RT CPU 33.4 tiles/s,
+    PyTorch CPU 15.5, INT8 3.4 (the INT8 remains a size win on x86, not a speed win -- unchanged
+    conclusion, new numbers).

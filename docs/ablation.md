@@ -1,6 +1,6 @@
 # Detection-stack ablation — SYNTHETIC held-out scenes
 
-Generated 2026-08-27T13:19:39+00:00 by `scripts/eval_detector.py` in 34 s.
+Generated 2026-08-29T21:33:34+00:00 by `scripts/eval_detector.py` in 14 s.
 
 **Read this before quoting any number.** Every scene below is rendered by
 the SAGAR-NETRA physics scene simulator — no real sonar data is involved.
@@ -26,10 +26,10 @@ comparison between pipeline stages measured on identical raw detections.
 
 | configuration | P@50 | R@50 | F1@50 | PR-AUC | FP/km² | TP | FP | dets |
 |---|---|---|---|---|---|---|---|---|
-| (a) raw detector (calibrated score) | 0.294 | 0.588 | 0.392 | 0.486 | 469.21 | 20 | 48 | 84 |
-| (b) + physics gate (Stage-1) | 0.583 | 0.618 | 0.600 | 0.594 | 146.63 | 21 | 15 | 84 |
-| (c) + ML verifier (Stage-2) | 0.667 | 0.588 | 0.625 | 0.627 | 97.75 | 20 | 10 | 84 |
-| (d) + temporal persistence (deployed) | 0.667 | 0.588 | 0.625 | 0.627 | 97.75 | 20 | 10 | 84 |
+| (a) raw detector (calibrated score) | 0.270 | 0.588 | 0.370 | 0.514 | 527.86 | 20 | 54 | 93 |
+| (b) + physics gate (Stage-1) | 0.538 | 0.618 | 0.575 | 0.472 | 175.95 | 21 | 18 | 93 |
+| (c) + ML verifier (Stage-2) | 0.528 | 0.559 | 0.543 | 0.425 | 166.18 | 19 | 17 | 93 |
+| (d) + temporal persistence (deployed) | 0.528 | 0.559 | 0.543 | 0.425 | 166.18 | 19 | 17 | 93 |
 
 Reading the ladder: (b) applies the Stage-1 highlight/shadow multipliers,
 (c) adds the learned Stage-2 cue-vector multiplier, (d) adds the

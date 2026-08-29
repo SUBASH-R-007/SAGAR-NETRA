@@ -20,7 +20,7 @@ plausibility:
   reef:          {min_height_m: 0.0, max_height_m: 10.0}
 
 scoring:
-  temperature: 2.544            # overwritten by scripts/fit_calibration.py output
+  temperature: 1.050            # overwritten by scripts/fit_calibration.py output
   violation_multiplier: 0.40  # height outside the class band
   no_highlight_multiplier: 0.50  # box not brighter than local seabed: weak evidence
   no_shadow_multiplier: 0.75  # no measurable shadow: height unverifiable (may be flat/small)

@@ -1,0 +1,79 @@
+{
+  "generated": "2026-08-28T13:09:05+00:00",
+  "synthetic": true,
+  "eval_seed_base": 12000,
+  "tune_seed_base": 11000,
+  "n_eval_scenes": 16,
+  "n_tune_scenes": 8,
+  "n_truth": 66,
+  "area_km2": 0.2054,
+  "iou_thresh": 0.3,
+  "class_match_required": false,
+  "rows": [
+    {
+      "key": "blob",
+      "label": "(1) classical threshold + blob",
+      "precision": 0.9038461538461539,
+      "recall": 0.7121212121212122,
+      "f1": 0.7966101694915254,
+      "pr_auc": 0.9166113996457875,
+      "fp_per_km2": 24.342745861733203,
+      "tp": 47,
+      "fp": 5,
+      "classifies": false,
+      "setting": "k_sigma=0.25, score>=39.7 (tuned on split A)"
+    },
+    {
+      "key": "blob_shadow",
+      "label": "(2) classical + shadow gate",
+      "precision": 0.8412698412698413,
+      "recall": 0.803030303030303,
+      "f1": 0.8217054263565892,
+      "pr_auc": 0.827906923231471,
+      "fp_per_km2": 48.685491723466406,
+      "tp": 53,
+      "fp": 10,
+      "classifies": false,
+      "setting": "k_sigma=0.05, score>=33.4 (tuned on split A)"
+    },
+    {
+      "key": "sagar_raw",
+      "label": "(3) SAGAR-NETRA detector only (no physics)",
+      "precision": 0.17063492063492064,
+      "recall": 0.6515151515151515,
+      "f1": 0.2704402515723271,
+      "pr_auc": 0.5691933957152355,
+      "fp_per_km2": 1017.5267770204479,
+      "tp": 43,
+      "fp": 209,
+      "classifies": true,
+      "setting": "shipped floor, conf>=50%"
+    },
+    {
+      "key": "sagar_full",
+      "label": "(4) SAGAR-NETRA full stack",
+      "precision": 0.7586206896551724,
+      "recall": 0.6666666666666666,
+      "f1": 0.7096774193548386,
+      "pr_auc": 0.7377620900462503,
+      "fp_per_km2": 68.15968841285297,
+      "tp": 44,
+      "fp": 14,
+      "classifies": true,
+      "setting": "shipped floor, conf>=50%"
+    },
+    {
+      "key": "sagar_tuned",
+      "label": "(5) SAGAR-NETRA full stack, threshold tuned",
+      "precision": 0.6428571428571429,
+      "recall": 0.6818181818181818,
+      "f1": 0.6617647058823529,
+      "pr_auc": 0.7377620900462503,
+      "fp_per_km2": 121.71372930866602,
+      "tp": 45,
+      "fp": 25,
+      "classifies": true,
+      "setting": "conf>=28.7% (tuned on split A)"
+    }
+  ]
+}

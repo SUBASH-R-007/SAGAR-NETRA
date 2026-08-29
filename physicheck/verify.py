@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from physicheck.calibrate import GateResult, PhysicsGate
 from physicheck.features import extract_features
 from physicheck.shadow import ShadowAnalysis, analyze_shadow
+from sonar_core.geometry import SonarGeometry, is_multipath_candidate
 from sonar_core.preprocess.pipeline import PreprocessResult
 
 if TYPE_CHECKING:  # pragma: no cover - typing only; sklearn import stays lazy
@@ -68,6 +69,9 @@ class VerifiedDetection:
     confidence_pct: float  # 0-100, temperature-scaled x physics multiplier
     verifier_p: float | None = None  # Stage-2 P(debris); None when no verifier ran
     persistence_pings: int | None = None  # along-track extent in scan lines
+    #: Sits in the band where the second bottom return lands (ground range
+    #: A*sqrt(3)). Advisory only -- it never changes the confidence.
+    multipath_suspect: bool = False
 
     @property
     def cls(self) -> str:
@@ -132,6 +136,7 @@ def verify_detections(
     Returns verified detections sorted by descending final confidence.
     """
     gate = gate or PhysicsGate()
+    sonar = SonarGeometry.load()
     shadow_kwargs = gate.shadow_kwargs()
     if not use_verifier:
         verifier = None
@@ -177,6 +182,22 @@ def verify_detections(
             factor = max(v_lo, min(v_hi, v_floor + v_gain * verifier_p))
             result = GateResult(result.multiplier * factor, result.violation, result.reason)
 
+        # Multipath advisory. A pulse that bounces seabed-surface-seabed comes
+        # back at twice the altitude in slant range, so the seabed is heard a
+        # second time at ground range A*sqrt(3); "targets" there are often that
+        # echo. Deliberately does NOT touch the multiplier: real debris does
+        # sometimes lie at 1.73 altitudes, and silently demoting it would trade
+        # a known false-alarm source for an unknown miss. The analyst is told;
+        # the score is left alone.
+        ground_range_m = (
+            0.5 * (int(det.col0) + int(det.col1)) + 0.5
+        ) * float(pre.ground_raw.ground_res)
+        multipath = is_multipath_candidate(
+            ground_range_m,
+            float(pre.ground_raw.altitude_m[int(det.ping0)]),
+            sonar.multipath_tolerance_frac,
+        )
+
         confidence = gate.confidence_pct(float(det.score), result)
         verified.append(
             VerifiedDetection(
@@ -186,6 +207,7 @@ def verify_detections(
                 confidence_pct=confidence,
                 verifier_p=verifier_p,
                 persistence_pings=persistence,
+                multipath_suspect=multipath,
             )
         )
         if progress is not None:

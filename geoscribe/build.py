@@ -21,6 +21,13 @@ from geoscribe.report import priority_for, recommended_action_for
 from geoscribe.severity import Layer, severity_score
 from physicheck.evidence import render_evidence_card
 from physicheck.verify import VerifiedDetection
+from sonar_core.geometry import (
+    DEFAULT_SOUND_VELOCITY,
+    SonarGeometry,
+    across_track_resolution_m,
+    along_track_resolution_m,
+    sound_speed_range_error_m,
+)
 from sonar_core.preprocess.pipeline import PreprocessResult
 from tridentnet.classes import is_reportable
 
@@ -55,10 +62,14 @@ def position_accuracy(
     layback_known: bool,
     nav_uncertainty_m: float = DEFAULT_NAV_UNCERTAINTY_M,
     layback_uncertainty_m: float = 5.0,
+    *,
+    ground_range_m: float = 0.0,
+    sv_uncertainty_frac: float = 0.0,
 ) -> float:
     """Honest per-contact position error budget, metres::
 
         accuracy = 2 * ground_res + layback_term + nav_uncertainty_m
+                   + sound_speed_term
 
     * ``2 * ground_res`` — pixel picking and slant-to-ground resampling can
       each be off by about one ground column;
@@ -67,13 +78,28 @@ def position_accuracy(
       ``layback_uncertainty_m``: an unmodelled cable layback shifts the whole
       swath along-track by the full missing offset;
     * ``nav_uncertainty_m`` — the surface GPS fix error itself
-      (``configs/geoscribe.yaml``, default 2.0 m).
+      (``configs/geoscribe.yaml``, default 2.0 m);
+    * ``sound_speed_term`` — ``sv_uncertainty_frac * ground_range_m``. Range is
+      ``c*t/2``, so a fractional error in the assumed sound speed is the same
+      fractional error in range: 1% is 0.75 m at 75 m out. It grows across the
+      swath, which is why it is charged per contact rather than per survey.
 
     Terms add linearly rather than in quadrature on purpose: each is a bias,
     not independent noise, and a recovery diver wants the conservative number.
+
+    The sound-speed term defaults to zero so a caller that knows nothing about
+    range gets exactly the previous budget rather than a silently different
+    one; the pipeline supplies both values from ``configs/sonar.yaml`` and the
+    contact's own across-track position.
     """
     layback_term = 0.0 if layback_known else float(layback_uncertainty_m)
-    return 2.0 * float(ground_res) + layback_term + float(nav_uncertainty_m)
+    sound_speed_term = sound_speed_range_error_m(ground_range_m, sv_uncertainty_frac)
+    return (
+        2.0 * float(ground_res)
+        + layback_term
+        + float(nav_uncertainty_m)
+        + sound_speed_term
+    )
 
 
 def survey_stats(pre: PreprocessResult) -> dict[str, Any]:
@@ -105,6 +131,17 @@ def survey_stats(pre: PreprocessResult) -> dict[str, Any]:
     slant = slant[np.isfinite(slant) & (slant > 0)]
     alt = np.asarray(gi.altitude_m, dtype=np.float64)
     alt = alt[np.isfinite(alt)]
+
+    # Resolution limits for this sonar. Across-track is a constant of the
+    # pulse; along-track is quoted at the far edge of the swath because that
+    # is the worst case an operator has to live with, and quoting the best
+    # case would flatter every length in the report.
+    sonar = SonarGeometry.load()
+    sv = np.asarray(gi.nav["sound_velocity"], dtype=np.float64)
+    sv = sv[np.isfinite(sv) & (sv > 0)]
+    sound_velocity = float(np.median(sv)) if sv.size else DEFAULT_SOUND_VELOCITY
+    max_range = float(np.max(slant)) if slant.size else 0.0
+
     return {
         "track_length_km": round(track_m / 1e3, 3),
         "swath_width_m": round(swath_m, 1),
@@ -112,6 +149,16 @@ def survey_stats(pre: PreprocessResult) -> dict[str, Any]:
         "range_m": None if slant.size == 0 else round(float(np.median(slant)), 1),
         "altitude_m": None if alt.size == 0 else round(float(np.mean(alt)), 1),
         "n_pings": int(gi.n_pings),
+        "sound_velocity_mps": round(sound_velocity, 1),
+        "across_track_resolution_m": round(
+            across_track_resolution_m(sound_velocity, sonar.pulse_length_s), 4
+        ),
+        "along_track_resolution_max_m": round(
+            along_track_resolution_m(sonar.along_track_beam_deg, max_range), 3
+        ),
+        "sound_speed_range_error_max_m": round(
+            sound_speed_range_error_m(max_range, sonar.sound_velocity_uncertainty_frac), 3
+        ),
     }
 
 
@@ -174,6 +221,11 @@ def build_contacts(
     if nav_uncertainty_m is None:
         nav_uncertainty_m = nav_fix_uncertainty_m()
 
+    # Sensor geometry is a property of the towfish, so it is read once per
+    # survey rather than per contact; only the range each term is evaluated at
+    # varies down the swath.
+    sonar = SonarGeometry.load()
+
     contacts: list[Contact] = []
     seq = 0
     for v in verified:
@@ -193,10 +245,22 @@ def build_contacts(
             depth = float(rec["sensor_depth"]) + float(pre.bottom.altitude_m[centre])
 
         height = None if not np.isfinite(v.analysis.height_m) else float(v.analysis.height_m)
+
+        # Ground range to the middle of the box, then the slant range the beam
+        # actually travelled -- along-track smear goes as theta * R with R the
+        # slant range, not its ground projection.
+        ground_range_m = (
+            0.5 * (int(det.col0) + int(det.col1)) + 0.5
+        ) * float(pre.ground.ground_res)
+        altitude_m = float(pre.ground.altitude_m[int(det.ping0)])
+        slant_range_m = float(np.hypot(ground_range_m, altitude_m))
+        along_res = along_track_resolution_m(sonar.along_track_beam_deg, slant_range_m)
+
         dims = Dimensions(
             length_m=round(geo.along_m, 2),
             width_m=round(geo.across_m, 2),
             height_m=None if height is None else round(height, 2),
+            along_track_resolution_m=round(along_res, 3),
         )
         score, breakdown = severity_score(
             det.cls,
@@ -215,6 +279,8 @@ def build_contacts(
             layback_known,
             nav_uncertainty_m=nav_uncertainty_m,
             layback_uncertainty_m=layback_uncertainty_m,
+            ground_range_m=ground_range_m,
+            sv_uncertainty_frac=sonar.sound_velocity_uncertainty_frac,
         )
 
         evidence_png = thumb_png = None
@@ -244,6 +310,7 @@ def build_contacts(
                     height_m=None if height is None else round(height, 2),
                     physics_violation=v.gate.violation,
                     violation_reason=v.gate.reason,
+                    multipath_suspect=v.multipath_suspect,
                 ),
                 severity=score,
                 severity_breakdown=breakdown,

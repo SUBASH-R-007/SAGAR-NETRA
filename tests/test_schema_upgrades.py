@@ -22,6 +22,7 @@ from geoscribe.report import (
     write_contacts_csv,
 )
 from physicheck.verify import verify_detections
+from sonar_core.geometry import SonarGeometry
 from sonar_core.preprocess.pipeline import preprocess
 from sonar_core.synth.scene import SceneConfig, SynthTarget, make_scene
 from tridentnet.detector import Detection
@@ -104,20 +105,72 @@ def test_recommended_action_rules(cls: str, severity: float, expected: str) -> N
 
 
 def test_built_contacts_carry_triage_fields(processed) -> None:
+    """Triage fields derive from severity, and the position budget from range.
+
+    The budget is checked *per contact* rather than against one survey-wide
+    figure: the sound-speed term scales with each contact's own ground range,
+    so a single expected value would only hold if every contact sat at the
+    same distance down the swath.
+    """
     _, pre, contacts = processed
     assert contacts, "stub survey must yield reportable contacts"
-    expected_accuracy = round(
-        position_accuracy(
-            pre.ground.ground_res,
-            layback_known=True,  # synthetic nav records an explicit (zero) layback
-            nav_uncertainty_m=nav_fix_uncertainty_m(),
-        ),
-        2,
-    )
+    sonar = SonarGeometry.load()
+
     for c in contacts:
         assert c.priority == priority_for(c.severity)
         assert c.recommended_action == recommended_action_for(c.cls, c.severity)
-        assert c.position_accuracy_m == pytest.approx(expected_accuracy)
+
+        ground_range_m = (
+            0.5 * (c.pixel.col0 + c.pixel.col1) + 0.5
+        ) * pre.ground.ground_res
+        expected = round(
+            position_accuracy(
+                pre.ground.ground_res,
+                layback_known=True,  # synthetic nav records an explicit (zero) layback
+                nav_uncertainty_m=nav_fix_uncertainty_m(),
+                ground_range_m=ground_range_m,
+                sv_uncertainty_frac=sonar.sound_velocity_uncertainty_frac,
+            ),
+            2,
+        )
+        assert c.position_accuracy_m == pytest.approx(expected)
+
+
+def test_position_budget_grows_across_the_swath(processed) -> None:
+    """A contact further out carries more sound-speed error, never less.
+
+    Range is c*t/2, so an error in assumed sound speed is a scale error: the
+    same 1% is worth more metres at the swath edge than near nadir. A budget
+    that ignored range would understate exactly the contacts a diver has the
+    most trouble finding.
+    """
+    _, pre, _ = processed
+    res = pre.ground.ground_res
+    near = position_accuracy(res, True, ground_range_m=10.0, sv_uncertainty_frac=0.01)
+    far = position_accuracy(res, True, ground_range_m=75.0, sv_uncertainty_frac=0.01)
+    assert far > near
+    assert far - near == pytest.approx(0.65, abs=1e-6)  # 1% of 65 m of extra range
+
+
+def test_position_budget_unchanged_when_range_is_not_supplied(processed) -> None:
+    """Callers that know nothing about range must get the previous budget.
+
+    The sound-speed term is opt-in precisely so adding it could not silently
+    change every number computed by code that had not been updated.
+    """
+    _, pre, _ = processed
+    res = pre.ground.ground_res
+    assert position_accuracy(res, True, nav_uncertainty_m=2.0) == pytest.approx(
+        2.0 * res + 2.0
+    )
+
+
+def test_contacts_report_their_along_track_resolution(processed) -> None:
+    """Every contact carries the beam footprint that bounds its length."""
+    _, _, contacts = processed
+    for c in contacts:
+        assert c.dims.along_track_resolution_m is not None
+        assert c.dims.along_track_resolution_m > 0.0
 
 
 # ------------------------------------------------------- position accuracy ----

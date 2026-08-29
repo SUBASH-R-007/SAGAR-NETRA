@@ -20,7 +20,11 @@ batch: 8            # tiles per predict() call; bounds peak memory on CPU/edge b
 # exists, inference fuses their consensus (tridentnet/deep_ensemble.py);
 # otherwise the single 'weights/detector.pt' path is used. Train members with
 #   python scripts/train_detector.py --seed N --dest weights/detector_seedN.pt --name detector_seedN
+# Single member since the real-data retrain (mAP50 0.834 on the UATD+KLSG+
+# synthetic mix; see docs/real_training.md). detector_seed1/2 are still the
+# old synthetic-only weights - putting them back in the list would let their
+# consensus veto suppress exactly the real-sonar detections the retrain
+# bought. Re-add seeds only after retraining them on the same real mix:
+#   python scripts/train_detector.py --data data/datasets/real_mix/data.yaml #       --seed N --dest weights/detector_seedN.pt --name detector_realmix_seedN
 ensemble_weights:
   - weights/detector.pt
-  - weights/detector_seed1.pt
-  - weights/detector_seed2.pt

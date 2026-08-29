@@ -124,3 +124,25 @@ export function fetchRoute({ survey, review = 'confirmed', clusterEpsM, startLat
   if (startLon !== undefined && startLon !== '') q.set('start_lon', String(startLon))
   return getJSON(`/api/route?${q.toString()}`)
 }
+
+// ---- physics lab ----
+// These call the deployed physics (sonar_core.geometry, physicheck.shadow),
+// not a browser re-derivation, so the lab and the pipeline cannot disagree.
+
+export const fetchGeometry = ({ altitude, range, beam, pulseUs }) => {
+  const q = new URLSearchParams({ altitude_m: altitude, range_m: range })
+  if (beam != null) q.set('beam_deg', beam)
+  if (pulseUs != null) q.set('pulse_us', pulseUs)
+  return getJSON(`/api/physics/geometry?${q.toString()}`)
+}
+
+export const fetchShadow = (altitude, height, groundRange) =>
+  postJSON('/api/physics/shadow', {
+    altitude_m: altitude,
+    height_m: height,
+    ground_range_m: groundRange,
+  })
+
+export const fetchSimClasses = () => getJSON('/api/physics/classes')
+
+export const simulateScene = (body) => postJSON('/api/physics/simulate', body)

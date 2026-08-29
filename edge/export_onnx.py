@@ -32,12 +32,22 @@ def export(weights: Path, imgsz: int, opset: int = 12) -> Path:
     from ultralytics import YOLO
 
     model = YOLO(str(weights))
-    onnx_path = model.export(format="onnx", imgsz=imgsz, opset=opset, dynamic=False)
+    # dynamic=True: the deployed Detector batches every tile of a survey into
+    # one forward pass. A static batch-1 export loads fine and then dies on
+    # the first multi-tile survey with "Got: 2 Expected: 1" — found by running
+    # the ONNX path through the real pipeline, not by reading docs. Dynamic
+    # axes cost nothing on ORT CPU and are required by that call pattern.
+    onnx_path = model.export(format="onnx", imgsz=imgsz, opset=opset, dynamic=True)
     return Path(onnx_path)
 
 
 def raw_parity(weights: Path, onnx_path: Path, imgsz: int, n_tiles: int = 4) -> float:
-    """Max abs deviation of raw output tensors between torch and ONNX."""
+    """Max abs deviation of raw output tensors between torch and ONNX.
+
+    Probes batch-1 tiles AND one batched pass: the deployed Detector sends
+    whole surveys as a single batch, so parity on batch-1 alone would bless an
+    export that the pipeline cannot actually call.
+    """
     import onnxruntime as ort
     import torch
     from ultralytics import YOLO
@@ -47,14 +57,20 @@ def raw_parity(weights: Path, onnx_path: Path, imgsz: int, n_tiles: int = 4) -> 
     session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     input_name = session.get_inputs()[0].name
 
-    # The export is static batch-1; compare tile by tile.
     worst = 0.0
-    for _ in range(n_tiles):
-        tile = rng.random((1, 3, imgsz, imgsz), dtype=np.float32)
+    tiles = rng.random((n_tiles, 3, imgsz, imgsz), dtype=np.float32)
+    for i in range(n_tiles):
+        tile = tiles[i : i + 1]
         with torch.no_grad():
             torch_out = torch_model(torch.from_numpy(tile))[0].numpy()
         onnx_out = session.run(None, {input_name: tile})[0]
         worst = max(worst, float(np.max(np.abs(torch_out - onnx_out))))
+
+    # Batched pass: must accept N>1 and agree with torch on the same batch.
+    with torch.no_grad():
+        torch_out = torch_model(torch.from_numpy(tiles))[0].numpy()
+    onnx_out = session.run(None, {input_name: tiles})[0]
+    worst = max(worst, float(np.max(np.abs(torch_out - onnx_out))))
     return worst
 
 

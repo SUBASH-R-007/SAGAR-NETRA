@@ -32,6 +32,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from api import copilot as copilot_mod
+from api import physics_lab
 from api.db import ContactRepo
 from api.diff import diff_surveys
 from api.jobs import Job, JobRegistry
@@ -84,6 +85,34 @@ class RecoveryRequest(BaseModel):
 
 class CopilotRequest(BaseModel):
     question: str
+
+
+class ShadowRequest(BaseModel):
+    """One object on a flat seabed, for the shadow forward/inverse panel."""
+
+    altitude_m: float = 10.0
+    height_m: float = 2.0
+    ground_range_m: float = 20.0
+
+
+class SimTarget(BaseModel):
+    cls: str = "cylinder_drum"
+    ground_range_m: float = 20.0
+    height_m: float | None = None
+    length_m: float | None = None
+    width_m: float | None = None
+    ping: int | None = None
+    side: str = "starboard"
+
+
+class SimulateRequest(BaseModel):
+    """A seabed a visitor built, to be rendered and then measured."""
+
+    targets: list[SimTarget] = []
+    altitude_m: float = 8.0
+    slant_range_m: float = 50.0
+    n_pings: int = 400
+    seed: int = 26057
 
 
 def create_app(
@@ -489,6 +518,50 @@ def create_app(
     @app.post("/api/copilot")
     def ask_copilot(body: CopilotRequest) -> dict[str, Any]:
         return copilot_mod.ask(body.question, app.state.repo)
+
+    # -------------------------------------------------------- physics lab --
+    # Every route here calls the same functions that process real surveys, so
+    # what the lab shows and what the pipeline does cannot drift apart.
+
+    @app.get("/api/physics/geometry")
+    def physics_geometry(
+        altitude_m: float = 8.0,
+        range_m: float = 50.0,
+        beam_deg: float | None = None,
+        pulse_us: float | None = None,
+        sound_velocity_mps: float | None = None,
+    ) -> dict[str, Any]:
+        """Resolution, multipath range and sound-speed error for one sonar setup."""
+        return physics_lab.geometry_report(
+            altitude_m, range_m,
+            beam_deg=beam_deg, pulse_us=pulse_us,
+            sound_velocity_mps=sound_velocity_mps,
+        )
+
+    @app.post("/api/physics/shadow")
+    def physics_shadow(body: ShadowRequest) -> dict[str, Any]:
+        """Forward-model a shadow, then invert it with the deployed estimator."""
+        return physics_lab.shadow_round_trip(
+            body.altitude_m, body.height_m, body.ground_range_m
+        )
+
+    @app.get("/api/physics/classes")
+    def physics_classes() -> list[dict[str, Any]]:
+        """Target classes the scene simulator can place, with their size ranges."""
+        return physics_lab.available_classes()
+
+    @app.post("/api/physics/simulate")
+    def physics_simulate(body: SimulateRequest) -> dict[str, Any]:
+        """Render a placed seabed and measure every target from its shadow."""
+        if not body.targets:
+            raise HTTPException(422, "place at least one target to simulate")
+        return physics_lab.simulate_scene(
+            [t.model_dump() for t in body.targets],
+            altitude_m=body.altitude_m,
+            slant_range_m=body.slant_range_m,
+            n_pings=body.n_pings,
+            seed=body.seed,
+        )
 
     # ----------------------------------------------------------- missions --
 
