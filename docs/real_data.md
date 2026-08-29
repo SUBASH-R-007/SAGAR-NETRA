@@ -1,6 +1,6 @@
 # Real sonar — what the pipeline actually does on it
 
-Generated 2026-08-29T06:35:08+00:00 by `scripts/eval_real_data.py` over 447 images in 181 s.
+Generated 2026-08-29T10:38:47+00:00 by `scripts/eval_real_data.py` over 447 images in 174 s.
 
 ## The corpus
 
@@ -96,29 +96,127 @@ two candidate paths are (a) domain-adapt Brain C's autoencoder on real seabed,
 which needs no labels at all, and (b) weakly supervised fine-tuning of Brain A on
 target-centred chips.
 
-## Path (a) was attempted and did not work
+## Why Brain C is loud on real seabed, and what fixed it
 
-`scripts/train_anomaly.py --klsg` mixes real seabed -- the border bands of the 81
-KLSG chips large enough to have a margin clear of their centred target -- into the
-autoencoder's training set. The retrained checkpoint was measured against the
-shipped one on both domains before any decision to adopt it:
+The first diagnosis was wrong and worth recording. The assumption was that the
+autoencoder reconstructs real seabed *badly* -- unfamiliar texture, high error,
+everything looks anomalous -- so it was retrained with real seabed mixed in
+(`scripts/train_anomaly.py --klsg`, still available). That produced no operating
+point worth shipping: at its own threshold the count halved but synthetic false
+anomalies tripled, and at the shipped threshold open-set detection stopped dead.
 
-| checkpoint | real (one wreck image) | synthetic scene | demo survey |
-|---|---|---|---|
-| shipped `anomaly.pt` | 539 anomalies | 15 | 17 raw -> 14 contacts, 1 open-set |
-| retrained, own threshold | 307 (-43%) | 45 (3x worse) | 19 raw -> 16 contacts, 3 open-set |
-| retrained, old threshold | 157 (-71%) | 1 | 16 raw -> 13 contacts, **0 open-set** |
+Measuring the error distributions showed why it could not have worked. Against the
+shipped checkpoint, real imagery reconstructs **better** than synthetic:
 
-**Neither operating point is an improvement.** At its own calibrated threshold the
-flood halves but synthetic false anomalies triple, and the demo survey gains two
-contacts that are not there. At the shipped threshold the flood drops by 71% but
-open-set detection stops entirely -- zero `unknown_anomaly` contacts -- which
-removes the capability Brain C exists to provide.
+| corpus | median error | fraction above threshold |
+|---|---|---|
+| synthetic clean seabed | 0.0688 | 1.49% |
+| real KLSG, whole chips | 0.0405 | 0.61% |
+| real KLSG, seabed borders | 0.0399 | 0.67% |
 
-One small convolutional autoencoder with a single global threshold cannot model
-two domains this different, and 324 border bands from 81 usable chips is thin. The
-shipped weights were therefore **left unchanged**; the retrained checkpoint is kept
-out of the deployed path. The likelier real fix is matching the two domains'
-statistics in preprocessing rather than asking one autoencoder to span both, or
-training on real data with real labels -- which is path (b), and needs boxes this
-corpus does not have.
+Error magnitude was never the problem, so retraining addressed something that was
+not broken. What differs is **spatial structure**. Synthetic speckle is
+incoherent, so its above-threshold pixels are scattered singletons that the
+`min_blob_px` filter discards. Real seabed texture -- sand ripples, rock fields,
+wreck framing -- is spatially coherent, so the same fraction of pixels forms
+connected blobs that survive. Measured per tile: a synthetic **maximum of 12**
+blobs against a real **median of 12 and a maximum of 62**.
+
+Blob peak-to-threshold ratios overlap too much to separate on (real median 1.45
+vs synthetic 1.33), so a strength gate would delete true positives before it
+deleted texture. A per-tile *candidate budget* keeping the highest-scoring blobs
+was implemented and measured next -- and it is not the fix either:
+
+| budget | candidates | surviving the 50% floor |
+|---|---|---|
+| off | 946 | 6 |
+| 16 | 635 | **0** |
+| 32 | 801 | 3 |
+| 48 | 902 | 5 |
+
+*(70 real KLSG images.)* Capping at 16 removes **every** detection that would have
+survived the confidence floor. The ranking is by raw reconstruction peak, while
+survival downstream is decided by highlight/shadow physics -- a texture blob can
+peak higher than a real target the gate would later promote, so ranking on one and
+selecting on the other is close to anti-correlated.
+
+`max_blobs_per_tile` therefore ships **disabled**, and every number in this report
+is measured with it off. It remains available as a deliberate recall-for-compute
+trade on fixed edge hardware, with the cost table above attached to it so nobody
+enables it expecting a free win.
+
+Two hypotheses tested, two rejected. What is left standing is the measurement
+itself: Brain C is loud on real seabed because real seabed is genuinely busy, and
+the physics stack -- not the anomaly brain -- is what makes the output usable.
+
+## What this changes
+
+The claim that survives is narrower and more defensible than the one before it:
+
+> The **signal chain** runs on real sonar from five different manufacturers with no
+> per-format handling. The **detection models** are trained on synthetic data and do
+> not yet transfer — measured, not assumed.
+
+The fix is not a better gate; it is real training data, and this corpus is the
+start of it. KLSG carries folder-level class labels but no bounding boxes, so the
+two candidate paths are (a) domain-adapt Brain C's autoencoder on real seabed,
+which needs no labels at all, and (b) weakly supervised fine-tuning of Brain A on
+target-centred chips.
+
+## Why Brain C is loud on real seabed, and what fixed it
+
+The first diagnosis was wrong and worth recording. The assumption was that the
+autoencoder reconstructs real seabed *badly* -- unfamiliar texture, high error,
+everything looks anomalous -- so it was retrained with real seabed mixed in
+(`scripts/train_anomaly.py --klsg`, still available). That produced no operating
+point worth shipping: at its own threshold the count halved but synthetic false
+anomalies tripled, and at the shipped threshold open-set detection stopped dead.
+
+Measuring the error distributions showed why it could not have worked. Against the
+shipped checkpoint, real imagery reconstructs **better** than synthetic:
+
+| corpus | median error | fraction above threshold |
+|---|---|---|
+| synthetic clean seabed | 0.0688 | 1.49% |
+| real KLSG, whole chips | 0.0405 | 0.61% |
+| real KLSG, seabed borders | 0.0399 | 0.67% |
+
+Error magnitude was never the problem, so retraining addressed something that was
+not broken. What differs is **spatial structure**. Synthetic speckle is
+incoherent, so its above-threshold pixels are scattered singletons that the
+`min_blob_px` filter discards. Real seabed texture -- sand ripples, rock fields,
+wreck framing -- is spatially coherent, so the same fraction of pixels forms
+connected blobs that survive. Measured per tile: a synthetic **maximum of 12**
+blobs against a real **median of 12 and a maximum of 62**.
+
+Blob peak-to-threshold ratios overlap too much to separate on (real median 1.45
+vs synthetic 1.33), so a strength gate would delete true positives before it
+deleted texture. What is safe to bound is *cost*: `max_blobs_per_tile` keeps the
+highest-scoring blobs per tile and drops the rest, since a real target peaks well
+above the threshold while texture barely crosses it.
+
+The shipped budget of 16 sits above the synthetic maximum on purpose:
+
+| | candidates |
+|---|---|
+| synthetic held-out scenes (6 seeds) | **bit-identical, box for box** |
+| real ship-113 | 539 -> 311 (**-42%**) |
+
+This is a cost bound, not a transfer fix. Brain C is still answering honestly --
+a boulder field genuinely is unlike flat sediment -- and the detector still does
+not recognise real wrecks. What changed is that an image full of rocks can no
+longer spend unbounded downstream time, and it changed nothing about the scenes
+every published table was measured on.
+
+## What this changes
+
+The claim that survives is narrower and more defensible than the one before it:
+
+> The **signal chain** runs on real sonar from five different manufacturers with no
+> per-format handling. The **detection models** are trained on synthetic data and do
+> not yet transfer -- measured, not assumed.
+
+The fix for that is real training data. KLSG carries folder-level class labels but
+no bounding boxes, so the remaining path is weakly supervised fine-tuning on its
+target-centred chips; the pseudo-boxes would be approximate, and any mAP from them
+must not be quoted beside the synthetic numbers.

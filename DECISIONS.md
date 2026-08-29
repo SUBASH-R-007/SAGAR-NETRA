@@ -390,3 +390,31 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
     numbers and must not be quoted beside them.
 25. **The SCTD download URL 404s** as of 2026-08-29; the upstream repository has moved or been
     renamed. Recorded in the dataset spec rather than silently left to fail again.
+26. **The diagnosis behind decision 23 was wrong, and measuring it changed the conclusion.**
+    Retraining Brain C on real seabed assumed the autoencoder reconstructs real texture
+    *badly*. Measured against the shipped checkpoint, the opposite holds: real KLSG imagery
+    reconstructs **better** than synthetic — median error 0.0405 against 0.0688, with
+    **0.61%** of pixels over the threshold against **1.49%**. Error magnitude was never the
+    problem, so the retraining in decision 23 was treating something that was not broken,
+    which is why no operating point helped.
+27. **What actually diverges is spatial coherence, not error.** Synthetic speckle is
+    incoherent, so its above-threshold pixels are scattered singletons that `min_blob_px`
+    discards. Real seabed structure — sand ripples, rock fields, wreck framing — is
+    coherent, so the same fraction of pixels forms connected blobs that survive. Per tile:
+    a synthetic **maximum of 12** blobs against a real **median of 12 and maximum of 62**.
+    Brain C is answering honestly; a boulder field genuinely is unlike flat sediment.
+28. **A per-tile candidate budget was implemented, measured, and shipped disabled.**
+    Capping each tile at its highest-scoring blobs bounds worst-case cost and is bit-identical
+    on synthetic scenes (6 seeds, box for box). On real data it is actively harmful: over 70
+    KLSG images a budget of 16 cut candidates 946 -> 635 but cut detections surviving the 50%
+    floor **6 -> 0**; even at 48 it still costs one. The ranking is by raw reconstruction
+    peak while survival is decided by highlight/shadow physics, so a texture blob can outrank
+    a real target the gate would later promote — the two criteria are close to
+    anti-correlated. `max_blobs_per_tile` therefore defaults to **0**, the cost table is
+    attached to it in code and config, and a test pins the default so it cannot be enabled
+    silently. It remains available as a deliberate recall-for-compute trade on fixed edge
+    hardware, which is the one case that justifies it.
+29. **Two hypotheses tested, two rejected, nothing shipped that looks like a win.** The
+    round produced no improvement to real-data behaviour. What it produced is the correct
+    mechanism, two measured dead ends, and unchanged published numbers — which is worth more
+    than a plausible fix that had never been checked against what survives the floor.
