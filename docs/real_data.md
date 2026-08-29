@@ -1,6 +1,6 @@
 # Real sonar — what the pipeline actually does on it
 
-Generated 2026-08-29T10:38:47+00:00 by `scripts/eval_real_data.py` over 447 images in 174 s.
+Generated 2026-08-29T21:34:46+00:00 by `scripts/eval_real_data.py` over 447 images in 67 s.
 
 ## The corpus
 
@@ -38,28 +38,21 @@ This is the honest part.
 | measure | value |
 |---|---|
 | images processed | 447 (385 wreck, 62 aircraft) |
-| raw detections | 3602 (8.1 per image) |
-| from Brain A (supervised detector) | 515 (14.3%) |
-| from Brain C (open-set autoencoder) | 3087 (85.7%) |
-| surviving the shipped 50% floor | 19 |
-| mean top detector score per image | 0.670
-| wreck-image runs that ever predict wreck/aircraft | 53 / 385 |
+| raw detections | 3728 (8.3 per image) |
+| from Brain A (supervised detector) | 636 (17.1%) |
+| from Brain C (open-set autoencoder) | 3092 (82.9%) |
+| surviving the shipped 50% floor | 22 |
+| mean top detector score per image | 0.742
+| wreck-image runs that ever predict wreck/aircraft | 359 / 385 |
 
 ### Predicted class distribution
 
 | class | detections |
 |---|---|
-| `unknown_anomaly` | 3087 |
-| `pipeline` | 178 |
-| `ghost_net` | 123 |
-| `aircraft` | 62 |
-| `wreck` | 50 |
-| `tire` | 31 |
-| `human_body` | 25 |
-| `container` | 25 |
-| `rock_cluster` | 9 |
-| `cylinder_drum` | 6 |
-| `mine_like` | 6 |
+| `unknown_anomaly` | 3092 |
+| `wreck` | 610 |
+| `aircraft` | 22 |
+| `container` | 4 |
 
 ### Reading it
 
@@ -78,7 +71,7 @@ calibration set. It flooded in live-stream mode, it flooded on uploaded images,
 and it floods here.
 
 **The physics gate holds the line.** The shipped confidence floor still admits
-only 19 of 3602 raw detections, so the stage that was measured
+only 22 of 3728 raw detections, so the stage that was measured
 as a 15x false-alarm reduction on synthetic data is doing visible work here too —
 it is the only reason this output is not unusable.
 

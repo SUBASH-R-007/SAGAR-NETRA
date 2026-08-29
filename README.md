@@ -248,7 +248,7 @@ plus `unknown_anomaly`, an ensemble-level open-set label (not a training class).
 
 | Brain | Model | Role | Trained result |
 |---|---|---|---|
-| **A** | YOLOv8n × 3 seeds, deep ensemble | Rigid debris — boxes | mAP50 **0.656** / 0.651 / 0.587 (P 0.552, R 0.878) |
+| **A** | YOLOv8n, real-data trained (GPU) | Rigid debris — boxes | mAP50 **0.834** on the UATD+KLSG+synthetic mix; **0.819 on real annotated boxes** |
 | **B** | U-Net, ~1.9 M params, pure torch | Ghost nets & ropes — pixel masks | val Dice **0.924** |
 | **C** | Convolutional autoencoder | Open-set: "this does not belong here" | threshold auto-calibrated at train time |
 
@@ -303,7 +303,9 @@ container's 10.16 m shadow yields 2.36 m against a seeded truth of 2.4 m.*
 
 ![Calibration](docs/images/calibration.png)
 
-*Reliability diagrams before and after temperature scaling: **ECE 0.204 → 0.146** at T = 2.54.
+*Reliability diagrams before and after temperature scaling: **ECE 0.073** at T = 1.05 — the
+real-data-trained detector is nearly calibrated out of the box (the synthetic-only one needed
+T = 2.54 to get ECE down to 0.146).
 A displayed "70%" now means roughly 70% of such detections are real.*
 
 ### L4 · GeoScribe — geotagging, severity and reports
@@ -391,14 +393,15 @@ one detection pass re-scored four ways:
 
 | Configuration | Precision | Recall | F1 | PR-AUC | **FP / km²** |
 |---|---|---|---|---|---|
-| (a) raw detector | 0.294 | 0.588 | 0.392 | 0.486 | **469.2** |
-| (b) + physics gate | 0.583 | 0.618 | 0.600 | 0.594 | **146.6** |
-| (c) + ML verifier | 0.667 | 0.588 | 0.625 | 0.627 | **97.8** |
-| (d) + temporal persistence *(deployed)* | 0.667 | 0.588 | 0.625 | 0.627 | **97.8** |
+| (a) raw detector | 0.270 | 0.588 | 0.370 | 0.514 | **527.9** |
+| (b) + physics gate | 0.538 | 0.618 | 0.575 | 0.472 | **176.0** |
+| (c) + ML verifier | 0.528 | 0.559 | 0.543 | 0.425 | **166.2** |
+| (d) + temporal persistence *(deployed)* | 0.528 | 0.559 | 0.543 | 0.425 | **166.2** |
 
-**False alarms per km² drop 4.8× while recall holds.** Rows (c) and (d) coincide because the
-ensemble consensus already suppresses 1–2-ping impulsive returns; the temporal gate is the
-backstop for single-model operation.
+**False alarms per km² drop 3.2× at held recall.** (Measured with the real-data-trained
+detector; the earlier synthetic-only stack showed 4.8× — the new detector proposes more
+candidates on synthetic scenes, so the gate works harder for a slightly smaller ratio.)
+Rows (c) and (d) coincide because consensus already suppresses 1–2-ping impulsive returns.
 
 > **Read honestly:** these are *synthetic* held-out scenes. Synthetic targets are easier than real
 > debris in real clutter, so treat the absolute values as an upper bound and the **relative ladder**
@@ -465,11 +468,12 @@ recall, and at the permissive thresholds this baseline prefers it is net-negativ
 It cannot name a class, invert shadow length into height, score severity against habitat and
 shipping layers, or populate a report. That gap is architectural, not a matter of tuning.
 
-The likeliest reason the learned stack does not pull ahead is that a clean simulated seabed of
-high-contrast targets is exactly the regime a tuned threshold is best at, compounded by a small
-CPU-trained detector (mAP50 0.656). Settling it needs real survey data, not a louder synthetic
-table — which is what [`scripts/download_datasets.py`](scripts/download_datasets.py) and the
-active-learning loop exist for.
+The likeliest reason the learned stack did not pull ahead is that a clean simulated seabed of
+high-contrast targets is exactly the regime a tuned threshold is best at — compounded, at the
+time of this comparison, by a detector trained on 172 synthetic tiles (that detector has since
+been retrained on real data, section 6; this table predates the retrain and is kept as
+published rather than re-run, because the confound it documents is about the *benchmark*, not
+the model).
 
 ### Throughput ([`edge/benchmark.md`](edge/benchmark.md), CPU only)
 
@@ -492,11 +496,11 @@ A side-scan sonar produces 1–10 ping lines per second. The pipeline runs far a
 
 | Item | Result |
 |---|---|
-| Brain A detector (30 epochs, imgsz 512) | mAP50 **0.656**, mAP50-95 0.559, precision 0.552, recall 0.878 |
-| Deep-ensemble members | mAP50 0.656 / 0.651 / 0.587 |
+| Brain A detector (60 epochs, imgsz 640, RTX 4060) | mAP50 **0.834** mixed val; **0.819 real boxes** (UATD); 0.808 synthetic |
+| Training data | 7,838 images (88% real sonar), **12,616 real annotated boxes** |
 | Brain B segmenter (60 epochs) | val Dice **0.924**; mask alignment verified to **0.02 px** |
 | Stage-2 verifier | held-out AUC **0.955**, accuracy **0.957** |
-| Confidence calibration | ECE **0.204 → 0.146**, T = 2.54 |
+| Confidence calibration | ECE **0.073**, T = 1.05 (refit after the real-data retrain) |
 | ONNX export parity | mAP50 delta **0.0000** vs PyTorch |
 | Height from shadow | seeded 2.0 m recovered within 25%; 2.4 m container measured at 2.36 m |
 | Geotag accuracy | within **6%** of seeded across-track offset |
@@ -654,20 +658,25 @@ aircraft from L-3 Klein Associates, EdgeTech, Lcocean, Hydro-tech Marine and Tri
 **What transfers:** all 447 parse and run the complete signal chain — bottom tracking,
 slant correction, despeckle, CLAHE, tiling — with no per-format handling and no crashes.
 
-**What does not:** the detection models. Across the corpus, **85.7% of 3602 raw detections
-come from the open-set autoencoder** flooding on unfamiliar seabed texture, and the
-supervised detector reaches for `wreck` or `aircraft` on only **53 of 385 wreck images
-(13.8%)**. Trained on 172 synthetic tiles, it has never seen a real hull. Only **19
-detections survive the shipped 50% floor** across all 447 images — the physics gate is
-visibly the only thing holding the output together.
+**The detector was then retrained on real data** — 7,838 images (88% real sonar:
+UATD's 12,616 human-annotated boxes plus KLSG chips), 60 GPU epochs. Before/after on
+this same corpus, same harness ([`docs/real_training.md`](docs/real_training.md)):
 
-Domain-adapting the autoencoder on real seabed was tried and **rejected**: no operating
-point improved real data without either tripling synthetic false alarms or killing
-open-set detection outright. The shipped weights were left unchanged. The honest claim is
-now narrower and firmer:
+| measure | synthetic-only detector | real-data-trained |
+|---|---|---|
+| wreck images reaching `wreck`/`aircraft` (full pipeline) | 53 / 385 (13.8%) | **359 / 385 (93.2%)** |
+| KLSG val chips, top-1 correct class | 11.4% | **98.9%** |
+| mAP50 on real annotated boxes (UATD val) | 0.002 | **0.819** |
+| synthetic val (regression check) | 0.701 | **0.808** — improved, not traded |
 
-> The **signal chain** works on real sonar from five manufacturers. The **models** are
-> trained on synthetic data and do not yet transfer — measured, not assumed.
+Brain C still floods on busy real seabed (82.9% of raw detections; two candidate fixes
+were measured and rejected — `docs/real_data.md` has both), so the physics gate remains
+what makes the output usable. The claim, updated honestly:
+
+> The **signal chain** works on real sonar from five manufacturers, and the **detector**
+> is now trained on real acoustics — mAP50 0.819 against real human-drawn boxes. The
+> remaining gap is domain (forward-looking training data vs side-scan deployment) and the
+> open-set brain, both measured.
 
 ---
 
@@ -675,13 +684,16 @@ now narrower and firmer:
 
 Stated plainly, because a prototype that hides its edges is not trustworthy:
 
-1. **Model metrics are on synthetic held-out data.** The blueprint target of ≥0.90 mAP@50 refers to
-   published results on real KLSG/SCTD benchmarks after full training campaigns. Our 0.656 is
-   honest closed-world synthetic performance. The real-data path is scripted, not yet run.
+1. **The detector's real training data is mostly forward-looking sonar.** UATD (88% of the mix)
+   was collected with a multibeam forward-looking sonar, not a side-scan towfish — mAP50 0.819 on
+   its real boxes proves real-acoustics competence, not side-scan-specific competence. The KLSG
+   side-scan numbers (98.9% class-reach) are against weak measured boxes. True side-scan mAP
+   needs an annotated side-scan corpus, which is exactly what the console's review loop collects.
 2. **A tuned classical CAD baseline outperforms us on the synthetic benchmark** — F1 0.822 vs
    0.710, localization-only. It is published in section 6 rather than hidden. Part of the gap is
    a simulator confound we quantified (`docs/clutter_sweep.md`); part is a small CPU-trained
-   detector. *"SAGAR-NETRA beats classical sonar software"* is **not** a claim this repository
+   detector (since retrained on real data — the comparison predates the retrain and is kept as
+   published). *"SAGAR-NETRA beats classical sonar software"* is **not** a claim this repository
    supports.
 3. **INT8 is a size win here, not a speed win** — the speed claim needs Jetson TensorRT hardware.
 4. **Jetson and Hailo paths are documented runbooks**, not executed measurements — we do not have

@@ -418,3 +418,35 @@ A running log of assumptions made while building SAGAR-NETRA. Newest entries at 
     round produced no improvement to real-data behaviour. What it produced is the correct
     mechanism, two measured dead ends, and unchanged published numbers — which is worth more
     than a plausible fix that had never been checked against what survives the floor.
+
+## Real-training round
+
+30. **The detector was retrained on real data and swapped in, gated, with rollback.** The mix:
+    7,838 images — UATD 88% (12,616 real human-annotated boxes, CC BY 4.0, multibeam
+    forward-looking domain), KLSG 4.5% (weak measured boxes), synthetic 7.5% (100 scenes).
+    YOLOv8n, 60 epochs, imgsz 640, RTX 4060, 4.9 h (workers=0 made it dataloader-bound at ~305
+    s/epoch with the GPU near idle — on Windows the spawn-deadlock guard costs ~4x wall-clock on
+    real-image datasets; WSL2 or cache="ram" is the escape, noted for next time). Gates before
+    the swap, one harness, baseline and candidate together: synthetic val 0.701 -> 0.808
+    (improved, not traded), KLSG class-reach 11.4% -> 98.9%, real-box mAP50 0.002 -> 0.819,
+    demo smoke sane. Old weights kept at weights/detector_synth_backup.pt.
+31. **The ensemble list was cut to the single real-trained member.** detector_seed1/2 are still
+    synthetic-only; consensus fusion demands corroboration, so leaving them in would let two
+    synthetic-only voters veto exactly the real-sonar detections the retrain bought. The config
+    documents the command to retrain seeds on the same mix before re-adding them.
+32. **Calibration and the verifier were refit as part of the swap, not later.** Temperature
+    2.544 -> 1.050 (the new detector is nearly calibrated out of the box; ECE 0.073, scene
+    accuracy 47.8% -> 72.3%) and verifier retrained on the new detector's detections (held-out
+    AUC 0.955). A golden test that pinned confidence values 72.8/31.6 broke — it had silently
+    pinned the old temperature. Rewritten to pin the behaviour it actually guards (missing
+    checkpoint == Stage-1-only scoring, computed in the same run), which survives any legitimate
+    recalibration.
+33. **The ablation ladder was regenerated and got less flattering: 4.8x -> 3.2x.** The new
+    detector proposes more candidates on synthetic scenes (93 vs 84), so the gate works harder
+    for a smaller ratio (527.9 -> 166.2 FP/km²). Published as measured; quoting the old 4.8x
+    next to the new detector would be stitching numbers from two different systems.
+34. **Full-pipeline wreck-reach on the 447-image real corpus: 53/385 -> 359/385 (93.2%).** The
+    honest boundary that remains: UATD is forward-looking sonar, so 0.819 real-box mAP proves
+    real-acoustics competence, not side-scan-specific competence; KLSG's 98.9% is against weak
+    boxes; and Brain C still floods on busy real seabed (82.9% of raw detections). Recorded in
+    README §11a and the limitations list.
