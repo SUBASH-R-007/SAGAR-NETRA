@@ -12,6 +12,12 @@ export default function FilterBar({
   onReview,
   shown,
   total,
+  // Overview and Recovery are driven by the selected survey but showed no way
+  // to change it - a user who landed on either was stuck with whatever survey
+  // the console had picked. They get the selector without the contact filters,
+  // because Overview deliberately reports unfiltered totals and a filter row
+  // above unfiltered numbers is a worse lie than no filter row at all.
+  showFilters = true,
 }) {
   return (
     <div className="filterbar">
@@ -38,6 +44,8 @@ export default function FilterBar({
         )}
       </label>
 
+      {showFilters && (
+      <>
       <label className="ctl">
         <span className="ctl-label">Review</span>
         <select value={review} onChange={(e) => onReview(e.target.value)}
@@ -73,9 +81,11 @@ export default function FilterBar({
         />
         <span className="mono ctl-value">{minConf}%</span>
       </label>
+      </>
+      )}
 
       <span className="filter-count mono">
-        {shown}/{total} contacts
+        {showFilters ? `${shown}/${total} contacts` : `${total} contacts`}
       </span>
     </div>
   )

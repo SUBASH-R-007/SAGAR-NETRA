@@ -9,7 +9,7 @@ import Chakra from './Chakra'
 // The error message is whatever the API returned. That endpoint deliberately
 // gives the same text for an unknown user and a wrong password, so this
 // screen must not try to be more helpful than the backend was willing to be.
-export default function Login({ onSignedIn }) {
+export default function Login({ onSignedIn, expired = false }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -23,8 +23,10 @@ export default function Login({ onSignedIn }) {
     try {
       onSignedIn(await login(username, password))
     } catch (err) {
-      // Strip the leading "401: " the fetch helper prefixes.
-      setError(String(err.message).replace(/^\d+:\s*/, ''))
+      // The API deliberately returns the same text for an unknown user and a
+      // wrong password, so `detail` is the honest thing to show; err.message
+      // would say "session expired", which is not what happened here.
+      setError(err.detail || String(err.message))
       setPassword('')
     } finally {
       setBusy(false)
@@ -51,6 +53,13 @@ export default function Login({ onSignedIn }) {
           <span className="t-white" />
           <span className="t-green" />
         </div>
+
+        {expired && !error && (
+          <p className="login-note login-expired" role="status">
+            Your session ended, so the console signed you out. Sign in again to
+            carry on — nothing you had already saved was lost.
+          </p>
+        )}
 
         <form className="login-form" onSubmit={submit}>
           <label className="login-field">

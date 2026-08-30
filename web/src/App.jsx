@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchContacts, fetchMe, fetchSurveys, logout } from './api'
+import { fetchContacts, fetchMe, fetchSurveys, logout, setUnauthorizedHandler } from './api'
 import Chakra from './components/Chakra'
 import Copilot from './components/Copilot'
 import Login from './components/Login'
@@ -16,7 +16,10 @@ import UploadRail from './components/UploadRail'
 import Waterfall from './components/Waterfall'
 
 const TABS = ['Overview', 'Map', 'Waterfall', 'Contacts', 'Recovery', 'Physics Lab', 'Diff', 'Copilot', 'System']
+// Tabs that filter the contact set. Overview and Recovery read the selected
+// survey but do not filter within it, so they get the survey selector alone.
 const FILTERED_TABS = new Set(['Map', 'Waterfall', 'Contacts'])
+const SURVEY_TABS = new Set(['Overview', 'Map', 'Waterfall', 'Contacts', 'Recovery'])
 
 // A- / A / A+ — the standard GoI portal accessibility control. Applied to the
 // root element font-size; the whole type scale is rem-based so it follows.
@@ -48,10 +51,16 @@ export default function App() {
   const [surveys, setSurveys] = useState([])
   const [survey, setSurvey] = useState('')
   const [contacts, setContacts] = useState([])
+  // idle (no survey) | loading | ready | error. Distinguishing these is why the
+  // views can stop showing "no contacts" at a fetch that has not returned yet.
+  const [contactState, setContactState] = useState('idle')
   const [cls, setCls] = useState('all')
   const [minConf, setMinConf] = useState(0)
   const [review, setReview] = useState('all')
   const [toasts, setToasts] = useState([])
+  const [expired, setExpired] = useState(false)
+  // Survives tab switches; see the note in Copilot.jsx.
+  const [copilotLog, setCopilotLog] = useState([])
   const [fontStep, setFontStep] = useState(readStoredFontStep)
 
   useEffect(() => {
@@ -123,6 +132,20 @@ export default function App() {
     [pushToast],
   )
 
+  // One place handles session expiry. Without it a 12-hour session ending
+  // mid-shift surfaced as a six-second toast and an action that had quietly
+  // not happened.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      // Returning to the login screen unmounts the toast stack, so the reason
+      // has to travel with the screen itself or the user is bounced out with
+      // no explanation and assumes the console broke.
+      setExpired(true)
+      setMe(false)
+    })
+    return () => setUnauthorizedHandler(null)
+  }, [pushToast])
+
   useEffect(() => {
     refreshSurveys()
   }, [refreshSurveys])
@@ -132,19 +155,26 @@ export default function App() {
   useEffect(() => {
     setCls('all')
     setReview('all')
+    // Clear first. This effect used to leave the previous survey's contacts on
+    // screen for the length of the fetch, while the header above them already
+    // read the new survey's name and the old survey's count - the console
+    // asserting that one survey's debris belonged to another.
+    setContacts([])
     if (!survey) {
-      setContacts([])
+      setContactState('idle')
       return undefined
     }
+    setContactState('loading')
     let alive = true
     fetchContacts(survey)
       .then((res) => {
         if (!alive) return
         const rows = res.contacts || []
         setContacts(rows)
+        setContactState('ready')
         if (rows.length >= 500) {
           pushToast(
-            'Showing the first 500 contacts - filter by class or confidence to narrow',
+            `Showing the 500 highest-severity contacts of ${survey}. Lower-severity ones are not loaded.`,
             'info',
           )
         }
@@ -152,7 +182,8 @@ export default function App() {
       .catch((err) => {
         if (alive) {
           setContacts([])
-          pushToast(`Failed to load contacts: ${err.message}`, 'error')
+          setContactState('error')
+          pushToast(`Could not load contacts for ${survey}. ${err.message}`, 'error')
         }
       })
     return () => {
@@ -198,7 +229,15 @@ export default function App() {
     return <div className="app-booting mono">Checking session…</div>
   }
   if (me === false) {
-    return <Login onSignedIn={setMe} />
+    return (
+      <Login
+        expired={expired}
+        onSignedIn={(u) => {
+          setExpired(false)
+          setMe(u)
+        }}
+      />
+    )
   }
 
   return (
@@ -288,7 +327,7 @@ export default function App() {
         </p>
       </header>
 
-      {FILTERED_TABS.has(tab) && (
+      {SURVEY_TABS.has(tab) && (
         <FilterBar
           surveys={surveys}
           survey={survey}
@@ -303,6 +342,7 @@ export default function App() {
           shown={filtered.length}
           total={contacts.length}
           onDeleteSurvey={can('delete_survey') ? onDeleteSurvey : null}
+          showFilters={FILTERED_TABS.has(tab)}
         />
       )}
 
@@ -316,6 +356,7 @@ export default function App() {
               hasSurvey={Boolean(survey)}
               canReview={can('review')}
               permissions={me.permissions}
+              contactState={contactState}
             />
           )}
           {tab === 'Waterfall' && (
@@ -336,6 +377,7 @@ export default function App() {
               pushToast={pushToast}
               canReview={can('review')}
               canRecover={can('recover')}
+              contactState={contactState}
             />
           )}
           {tab === 'Overview' && (
@@ -353,7 +395,9 @@ export default function App() {
           )}
           {tab === 'Physics Lab' && <PhysicsLab pushToast={pushToast} />}
           {tab === 'Diff' && <DiffView surveys={surveys} pushToast={pushToast} />}
-          {tab === 'Copilot' && <Copilot pushToast={pushToast} />}
+          {tab === 'Copilot' && (
+            <Copilot pushToast={pushToast} log={copilotLog} setLog={setCopilotLog} />
+          )}
           {tab === 'System' && <SystemStatus pushToast={pushToast} />}
         </main>
         <UploadRail

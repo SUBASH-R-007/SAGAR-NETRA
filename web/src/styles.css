@@ -1189,13 +1189,17 @@ input[type='checkbox'] {
 }
 
 .wf .view-head,
-.contacts-wrap .view-head {
+.contacts-wrap .view-head,
+.diff .view-head,
+.rp .view-head {
   padding: 12px 24px 0;
 }
 
 @media (max-width: 900px) {
   .wf .view-head,
-  .contacts-wrap .view-head {
+  .contacts-wrap .view-head,
+  .diff .view-head,
+  .rp .view-head {
     padding: 12px 16px 0;
   }
 }
@@ -2051,4 +2055,14 @@ label.legend-row {
   .view-head {
     padding: 12px 16px 0;
   }
+}
+
+/* Why you are looking at a login screen you did not ask for. */
+.login-expired {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline-2);
+  border-left: 3px solid var(--saffron);
+  background: var(--saffron-wash);
+  color: var(--ink);
 }

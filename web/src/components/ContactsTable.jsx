@@ -105,6 +105,7 @@ function PositionAccuracy({ value }) {
 }
 
 export default function ContactsTable({
+  contactState = 'ready',
   contacts,
   survey,
   onReview,
@@ -147,6 +148,27 @@ export default function ContactsTable({
     key === sortKey ? (dir === 1 ? 'ascending' : 'descending') : undefined
 
   const review = async (c, status) => {
+    // Deleting a survey asks first; rejecting a contact did not, though it is
+    // the same kind of act - a judgement written to the record that the console
+    // gives no way to take back. A rejected critical contact is one an operator
+    // stops seeing, so the higher its severity the more this matters.
+    if (status === 'rejected') {
+      const stakes =
+        c.severity >= 75
+          ? `
+
+${c.id} is a HIGH-priority contact (severity ${Math.round(c.severity)}).`
+          : ''
+      if (
+        !window.confirm(
+          `Reject ${c.id} as not a real object?${stakes}
+
+It will be filtered out of the operational views.`,
+        )
+      ) {
+        return
+      }
+    }
     setBusyId(c.id)
     try {
       onReview(await postReview(c.id, status))
@@ -209,9 +231,24 @@ export default function ContactsTable({
       </div>
 
       {sorted.length === 0 ? (
+        // "Still loading", "nothing here" and "the request failed" used to be
+        // the same grey box, so a slow fetch and a broken backend both read as
+        // a clean survey with nothing in it.
         <EmptyState
-          title="No contacts to show"
-          hint="This survey has no contacts matching the current class / confidence filters."
+          title={
+            contactState === 'loading'
+              ? 'Loading contacts'
+              : contactState === 'error'
+                ? 'Could not load contacts'
+                : 'No contacts to show'
+          }
+          hint={
+            contactState === 'loading'
+              ? `Reading ${survey} from the contact store.`
+              : contactState === 'error'
+                ? 'The request to the backend failed. The error notice has the detail; the console is not saying this survey is empty.'
+                : 'This survey has no contacts matching the current class / confidence filters.'
+          }
         />
       ) : (
         <div className="table-scroll">

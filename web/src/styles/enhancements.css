@@ -544,3 +544,23 @@
   font-size: var(--fs-detail);
   color: var(--ink);
 }
+
+/* A failed sensitive-layers fetch used to be swallowed by an empty catch, so
+   the protected habitats and shipping lanes simply were not on the map and
+   nothing said why. Those zones decide who must be notified before a recovery
+   (configs/actions.yaml), so their absence is a fact about the map's
+   completeness, not a cosmetic detail. */
+.map-layer-warning {
+  position: absolute;
+  left: 24px;
+  bottom: 24px;
+  z-index: 1000;
+  max-width: 44ch;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--sev-high);
+  border-left-width: 3px;
+  font-size: var(--fs-detail);
+  color: var(--ink);
+}
