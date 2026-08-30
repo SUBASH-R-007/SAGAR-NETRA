@@ -76,6 +76,14 @@ export default function MapView({
 
   return (
     <div className="map-wrap">
+      <header className="view-head">
+        <h2 className="view-title">Contact map</h2>
+        <p className="view-sub">
+          Every detected object placed on the chart, coloured by severity. The
+          dashed outlines are protected habitats and shipping lanes — a contact
+          inside one changes who has to be notified before anyone recovers it.
+        </p>
+      </header>
       <MapContainer center={CENTER} zoom={13} className="map" preferCanvas>
         <MapResize />
         <FitToContacts contacts={contacts} />

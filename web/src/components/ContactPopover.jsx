@@ -59,7 +59,7 @@ export default function ContactPopover({
         <span>Depth</span>
         <b className="mono">{fmtMeters(c.depth_m)}</b>
         <span>Along-track res</span>
-        <b className="mono" title="Beam footprint at this range - the resolution floor under length_m">
+        <b className="mono" title="How wide the sonar beam is at this range. The contact cannot be measured finer than this, so it is the error bar on the length.">
           {c.dims && c.dims.along_track_resolution_m != null
             ? `±${c.dims.along_track_resolution_m.toFixed(2)} m`
             : '—'}
@@ -68,12 +68,20 @@ export default function ContactPopover({
         <b className="mono">
           {c.position_accuracy_m != null ? `${c.position_accuracy_m.toFixed(1)} m` : '—'}
         </b>
-        <span>Brains</span>
-        <b>{c.brains && c.brains.length ? c.brains.join(' · ') : '—'}</b>
+        <span>Detectors agreed</span>
+        <b title="A = object detector, B = shape segmenter, C = anomaly finder. They vote independently; more agreement is stronger evidence.">
+          {c.brains && c.brains.length ? `${c.brains.length} of 3 · ${c.brains.join(' · ')}` : '—'}
+        </b>
         <span>Review</span>
         <b className={`rv rv-${c.review}`}>{c.review}</b>
       </div>
       <PhysicsBadges physics={c.physics} />
+      {c.physics && c.physics.physics_violation && (
+        <p className="pop-violation">
+          <b>Physics check failed:</b>{' '}
+          {c.physics.violation_reason || 'the return geometry is not consistent with this class'}
+        </p>
+      )}
       {c.recommended_action && (
         <div
           className={`pop-action${c.action_rule === 'always_override' ? ' urgent' : ''}`}

@@ -58,7 +58,7 @@ function Tile({ label, value, unit, unitLabel, context, tone, target, onTab }) {
   )
 }
 
-export default function Overview({ contacts, survey, surveys, onTab, pushToast }) {
+export default function Overview({ contacts, survey, surveys, onTab, pushToast, canUpload }) {
   const [summary, setSummary] = useState(null)
   // idle (no survey) | loading | ready | absent (404, no report yet) | error
   const [state, setState] = useState('idle')
@@ -148,10 +148,31 @@ export default function Overview({ contacts, survey, surveys, onTab, pushToast }
   )
 
   if (!survey) {
+    // This is the true first screen: data/contacts.db is git-ignored, so a
+    // fresh clone, a Docker run and a freshly-flashed edge box all land here.
+    // Telling a read-only role to "drop a sonar file into the ingest rail" was
+    // an instruction the rail one column right refuses to carry out — the
+    // console already knows the user cannot upload, so it should not ask.
     return (
       <EmptyState
         title="No survey selected"
-        hint="Drop a sonar file into the ingest rail on the right — the command overview for that survey appears here once the pipeline finishes."
+        hint={
+          canUpload
+            ? 'Drop a sonar file into the ingest rail on the right — the command overview for that survey appears here once the pipeline finishes.'
+            : 'No survey has been processed on this deployment yet, and your role does not include ingest. Ask an operator to load one. In the meantime, two views work without a survey:'
+        }
+        action={
+          canUpload ? null : (
+            <>
+              <button type="button" className="btn small" onClick={() => onTab('Physics Lab')}>
+                Physics Lab
+              </button>
+              <button type="button" className="btn small" onClick={() => onTab('System')}>
+                System status
+              </button>
+            </>
+          )
+        }
       />
     )
   }

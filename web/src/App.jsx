@@ -67,7 +67,16 @@ export default function App() {
   const pushToast = useCallback((text, kind = 'info') => {
     const id = ++toastSeq
     setToasts((ts) => [...ts, { id, text, kind }])
-    setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 6000)
+    // Errors persist until dismissed. A six-second failure notice is a notice
+    // nobody read: the survey that did not ingest is still not ingested, and
+    // the console would otherwise present a dead backend as merely empty.
+    if (kind !== 'error') {
+      setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 6000)
+    }
+  }, [])
+
+  const dismissToast = useCallback((id) => {
+    setToasts((ts) => ts.filter((t) => t.id !== id))
   }, [])
 
   // Session bootstrap. /api/auth/me answering 401 is the single signal that
@@ -264,6 +273,7 @@ export default function App() {
               key={t}
               type="button"
               className={t === tab ? 'tab active' : 'tab'}
+              aria-current={t === tab ? 'page' : undefined}
               onClick={() => setTab(t)}
             >
               {t}
@@ -335,6 +345,7 @@ export default function App() {
               surveys={surveys}
               onTab={setTab}
               pushToast={pushToast}
+              canUpload={can('upload')}
             />
           )}
           {tab === 'Recovery' && (
@@ -366,7 +377,7 @@ export default function App() {
         <span className="footer-mode mono">Offline-first · Zero cloud dependency</span>
       </footer>
 
-      <Toasts toasts={toasts} />
+      <Toasts toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

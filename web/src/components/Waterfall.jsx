@@ -76,6 +76,20 @@ export default function Waterfall({
 
   return (
     <div className="wf">
+      {/* The port-mirrored | starboard geometry was documented in a source
+          comment at the top of this file and nowhere the user could see it.
+          This is the screen a non-specialist understands least and the one
+          that explained itself least. */}
+      <header className="view-head">
+        <h2 className="view-title">Sonar waterfall</h2>
+        <p className="view-sub">
+          The raw sonar picture, built one ping at a time as the towfish moves.
+          Down the image is distance travelled; left and right are the two sides
+          of the tow — <b>port</b> mirrored on the left, <b>starboard</b> on the
+          right, with the vessel track down the centre. Boxes mark what the
+          detector found; click one for the evidence.
+        </p>
+      </header>
       <div className="wf-toolbar">
         <label className="ctl slider">
           <span className="ctl-label">Zoom</span>

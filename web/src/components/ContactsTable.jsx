@@ -20,7 +20,16 @@ const SORTS = {
 // Header keys that read best low-to-high on first click.
 const ASCENDING_FIRST = new Set(['class', 'id', 'action'])
 const REPORT_FMTS = ['json', 'csv', 'geojson', 'kml', 'pdf']
-const BREAKDOWN_KEYS = ['hazard', 'size', 'height', 'depth', 'proximity']
+// Severity factors, with the weights geoscribe/severity.py:40-46 actually
+// applies. Showing the weight matters: a contact can score 1.00 on proximity
+// and still sit mid-band, and without the multiplier that reads as a bug.
+const BREAKDOWN_KEYS = [
+  { key: 'hazard', label: 'hazard', weight: 0.4 },
+  { key: 'size', label: 'size', weight: 0.15 },
+  { key: 'height', label: 'height', weight: 0.1 },
+  { key: 'depth', label: 'depth', weight: 0.15 },
+  { key: 'proximity', label: 'proximity', weight: 0.2 },
+]
 // Recovery workflow ring: flagged -> assigned -> retrieved (-> flagged to undo).
 const NEXT_RECOVERY = { flagged: 'assigned', assigned: 'retrieved', retrieved: 'flagged' }
 
@@ -28,18 +37,28 @@ function BreakdownBars({ breakdown }) {
   const b = breakdown || {}
   return (
     <div className="breakdown">
-      {BREAKDOWN_KEYS.map((k) => {
-        const v = Number(b[k] || 0)
+      {BREAKDOWN_KEYS.map(({ key, label, weight }) => {
+        // The backend stores every factor as a 0-1 fraction (severity.py rounds
+        // to 3dp). Rendering it straight into a percentage width drew every bar
+        // at under 1% and labelled the strongest factor "1" - the panel meant to
+        // explain the score showed five empty troughs instead.
+        const v = Math.min(Math.max(Number(b[key] || 0), 0), 1)
         return (
-          <div key={k} className="bk-row">
-            <span className="bk-label mono">{k}</span>
+          <div key={key} className="bk-row">
+            <span className="bk-label mono">{label}</span>
             <div className="bk-bar">
-              <div className="bk-fill" style={{ width: `${Math.min(v, 100)}%` }} />
+              <div className="bk-fill" style={{ width: `${v * 100}%` }} />
             </div>
-            <span className="bk-value mono">{v.toFixed(0)}</span>
+            <span className="bk-value mono">{(v * 100).toFixed(0)}</span>
+            <span className="bk-weight mono" title={`this factor is worth ${Math.round(weight * 100)}% of the severity score`}>
+              &times;{weight.toFixed(2)}
+            </span>
           </div>
         )
       })}
+      <p className="bk-caption">
+        Each factor scores 0-100 on its own; severity is their weighted sum.
+      </p>
       <div className="bk-layer">
         Nearest sensitive layer:{' '}
         <b>
@@ -163,6 +182,17 @@ export default function ContactsTable({
 
   return (
     <div className="contacts-wrap">
+      <header className="view-head">
+        <h2 className="view-title">Contacts</h2>
+        <p className="view-sub">
+          Every object the pipeline is confident enough to report, ranked by
+          severity. <b>Severity</b> is how much this object matters (0-100,
+          weighing what it is, how big, how deep and what it sits near);{' '}
+          <b>confidence</b> is how sure the model is that it is really there.
+          They are independent — a certain tyre still scores low. Open a row to
+          see how its severity was built.
+        </p>
+      </header>
       <div className="contacts-toolbar">
         <span className="ctl-label">Download report</span>
         {REPORT_FMTS.map((fmt) => (
@@ -349,6 +379,13 @@ rule: ${
                     <tr className="expand-row">
                       <td colSpan={13}>
                         <BreakdownBars breakdown={c.severity_breakdown} />
+                        {c.physics && c.physics.physics_violation && (
+                          <p className="pop-violation">
+                            <b>Physics check failed:</b>{' '}
+                            {c.physics.violation_reason ||
+                              'the return geometry is not consistent with this class'}
+                          </p>
+                        )}
                         <PositionAccuracy value={c.position_accuracy_m} />
                       </td>
                     </tr>
