@@ -85,7 +85,14 @@ function PositionAccuracy({ value }) {
   )
 }
 
-export default function ContactsTable({ contacts, survey, onReview, pushToast }) {
+export default function ContactsTable({
+  contacts,
+  survey,
+  onReview,
+  pushToast,
+  canReview = true,
+  canRecover = true,
+}) {
   const [sortKey, setSortKey] = useState('severity')
   const [dir, setDir] = useState(-1)
   const [expandedId, setExpandedId] = useState(null)
@@ -280,6 +287,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         <span className={`rc rc-${c.recovery || 'flagged'}`}>
                           {c.recovery || 'flagged'}
                         </span>
+                        {canRecover && (
                         <button
                           type="button"
                           className="btn small"
@@ -289,10 +297,12 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         >
                           Advance
                         </button>
+                        )}
                       </div>
                     </td>
                     <td className="actions-cell">
                       <div className="row-actions">
+                        {canReview && (
                         <button
                           type="button"
                           className="btn ok small"
@@ -301,6 +311,8 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         >
                           Confirm
                         </button>
+                        )}
+                        {canReview && (
                         <button
                           type="button"
                           className="btn danger small"
@@ -309,6 +321,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         >
                           Reject
                         </button>
+                        )}
                         <a
                           className="btn link small"
                           href={evidenceUrl(c.id)}

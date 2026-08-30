@@ -11,15 +11,25 @@ async function handle(res) {
     } catch {
       /* body was not JSON */
     }
-    throw new Error(`${res.status}: ${detail}`)
+    const err = new Error(`${res.status}: ${detail}`)
+    // Callers branch on this: 401 means "show the login screen", every other
+    // status is an ordinary error worth a toast.
+    err.status = res.status
+    throw err
   }
   return res.json()
 }
 
-export const getJSON = (url) => fetch(url).then(handle)
+// The session cookie is HttpOnly — JavaScript cannot read it, which is the
+// point — so every request must opt in to sending it. 'same-origin' rather
+// than 'include': the console is served by the same FastAPI app it calls.
+const CREDS = { credentials: 'same-origin' }
+
+export const getJSON = (url) => fetch(url, CREDS).then(handle)
 
 export const postJSON = (url, body) =>
   fetch(url, {
+    ...CREDS,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -35,7 +45,7 @@ export const fetchContacts = (survey, limit = 500) =>
 export const fetchLayers = () => getJSON('/api/layers')
 
 export const deleteSurvey = (name) =>
-  fetch(`/api/surveys/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(handle)
+  fetch(`/api/surveys/${encodeURIComponent(name)}`, { ...CREDS, method: 'DELETE' }).then(handle)
 
 export const fetchJobs = () => getJSON('/api/jobs')
 
@@ -76,7 +86,7 @@ export async function uploadFile(file, mode = 'batch', mission = '', geometry = 
       if (v !== null && v !== undefined && v !== '') form.append(k, String(v))
     }
   }
-  return fetch('/api/upload', { method: 'POST', body: form }).then(handle)
+  return fetch('/api/upload', { ...CREDS, method: 'POST', body: form }).then(handle)
 }
 
 // ------------------------------------------------------------------ urls --
@@ -149,3 +159,14 @@ export const fetchShadow = (altitude, height, groundRange) =>
 export const fetchSimClasses = () => getJSON('/api/physics/classes')
 
 export const simulateScene = (body) => postJSON('/api/physics/simulate', body)
+
+// ---- auth ----
+// Enforcement lives on the API; these helpers only tell the console what to
+// render. A user who bypasses the UI still hits the same guards.
+
+export const login = (username, password) =>
+  postJSON('/api/auth/login', { username, password })
+
+export const logout = () => postJSON('/api/auth/logout', {})
+
+export const fetchMe = () => getJSON('/api/auth/me')

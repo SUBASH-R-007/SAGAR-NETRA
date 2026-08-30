@@ -6,7 +6,13 @@ import SeverityChip from './SeverityChip'
 
 // Shared contact card: used inside map popups (thumbnail) and in the
 // waterfall side panel (full evidence card).
-export default function ContactPopover({ contact, onReview, pushToast, showEvidence = false }) {
+export default function ContactPopover({
+  contact,
+  onReview,
+  pushToast,
+  showEvidence = false,
+  canReview = true,
+} ) {
   const [busy, setBusy] = useState(false)
   const [notes, setNotes] = useState('')
   const c = contact
@@ -64,6 +70,7 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         <b className={`rv rv-${c.review}`}>{c.review}</b>
       </div>
       <PhysicsBadges physics={c.physics} />
+      {canReview && (
       <input
         className="pop-notes"
         type="text"
@@ -73,7 +80,11 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         onChange={(e) => setNotes(e.target.value)}
         aria-label="Review note"
       />
+      )}
       <div className="pop-actions">
+        {/* Hiding these is a courtesy: the API refuses the call regardless. */}
+        {canReview && (
+          <>
         <button
           type="button"
           className="btn ok"
@@ -90,6 +101,8 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         >
           Reject
         </button>
+          </>
+        )}
         <a className="btn link" href={evidenceUrl(c.id)} target="_blank" rel="noreferrer">
           Evidence
         </a>

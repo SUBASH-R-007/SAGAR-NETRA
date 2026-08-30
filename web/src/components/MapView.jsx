@@ -46,7 +46,7 @@ function HeatLayer({ points, enabled }) {
   return null
 }
 
-export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
+export default function MapView({ contacts, onReview, pushToast, hasSurvey, canReview }) {
   const [layers, setLayers] = useState({})
   const [visible, setVisible] = useState({})
   const [heat, setHeat] = useState(false)
@@ -120,7 +120,12 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
             }}
           >
             <Popup maxWidth={300} className="contact-popup">
-              <ContactPopover contact={c} onReview={onReview} pushToast={pushToast} />
+              <ContactPopover
+                contact={c}
+                onReview={onReview}
+                pushToast={pushToast}
+                canReview={canReview}
+              />
             </Popup>
           </CircleMarker>
         ))}

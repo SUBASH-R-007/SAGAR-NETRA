@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { fetchContacts, fetchSurveys } from './api'
+import { fetchContacts, fetchMe, fetchSurveys, logout } from './api'
 import Chakra from './components/Chakra'
 import Copilot from './components/Copilot'
+import Login from './components/Login'
 import Overview from './components/Overview'
 import PhysicsLab from './components/PhysicsLab'
 import RecoveryPlanner from './components/RecoveryPlanner'
@@ -38,6 +39,11 @@ function readStoredFontStep() {
 let toastSeq = 0
 
 export default function App() {
+  // null = still checking, false = not signed in, object = the signed-in user.
+  // Three states rather than two: rendering the login screen while the session
+  // check is still in flight would flash it at every already-authenticated
+  // user on every page load.
+  const [me, setMe] = useState(null)
   const [tab, setTab] = useState('Overview')
   const [surveys, setSurveys] = useState([])
   const [survey, setSurvey] = useState('')
@@ -62,6 +68,37 @@ export default function App() {
     const id = ++toastSeq
     setToasts((ts) => [...ts, { id, text, kind }])
     setTimeout(() => setToasts((ts) => ts.filter((t) => t.id !== id)), 6000)
+  }, [])
+
+  // Session bootstrap. /api/auth/me answering 401 is the single signal that
+  // the console needs a login; anything else (server down, network) is left to
+  // the normal error paths so a transient blip does not sign the user out.
+  useEffect(() => {
+    let alive = true
+    fetchMe()
+      .then((u) => alive && setMe(u))
+      .catch((err) => {
+        if (!alive) return
+        setMe(err.status === 401 ? false : { username: 'unknown', role: 'viewer', permissions: [] })
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  const can = useCallback(
+    (permission) => Boolean(me && me.permissions && me.permissions.includes(permission)),
+    [me],
+  )
+
+  const signOut = useCallback(async () => {
+    try {
+      await logout()
+    } catch {
+      // Even if the call fails the local session is finished; the cookie is
+      // HttpOnly so the only thing to clear is our own state.
+    }
+    setMe(false)
   }, [])
 
   const refreshSurveys = useCallback(
@@ -148,6 +185,13 @@ export default function App() {
     [contacts, cls, minConf, review],
   )
 
+  if (me === null) {
+    return <div className="app-booting mono">Checking session…</div>
+  }
+  if (me === false) {
+    return <Login onSignedIn={setMe} />
+  }
+
   return (
     <div className="app">
       {/* 1 · government strip — 30px, navy-deep */}
@@ -159,6 +203,13 @@ export default function App() {
           <a className="skip-link" href="#main-content">
             Skip to main content
           </a>
+          <span className="who mono" title={`${me.full_name || me.username} · ${me.role}`}>
+            {me.username}
+            <span className={`role-chip role-${me.role}`}>{me.role}</span>
+          </span>
+          <button type="button" className="btn tiny signout" onClick={signOut}>
+            sign out
+          </button>
           <div className="fs-group" role="group" aria-label="Font size">
             {FONT_STEPS.map((s) => (
               <button
@@ -241,7 +292,7 @@ export default function App() {
           onReview={setReview}
           shown={filtered.length}
           total={contacts.length}
-          onDeleteSurvey={onDeleteSurvey}
+          onDeleteSurvey={can('delete_survey') ? onDeleteSurvey : null}
         />
       )}
 
@@ -253,6 +304,7 @@ export default function App() {
               onReview={onReview}
               pushToast={pushToast}
               hasSurvey={Boolean(survey)}
+              canReview={can('review')}
             />
           )}
           {tab === 'Waterfall' && (
@@ -261,6 +313,7 @@ export default function App() {
               contacts={filtered}
               onReview={onReview}
               pushToast={pushToast}
+              canReview={can('review')}
             />
           )}
           {tab === 'Contacts' && (
@@ -269,6 +322,8 @@ export default function App() {
               survey={survey}
               onReview={onReview}
               pushToast={pushToast}
+              canReview={can('review')}
+              canRecover={can('recover')}
             />
           )}
           {tab === 'Overview' && (
@@ -288,7 +343,11 @@ export default function App() {
           {tab === 'Copilot' && <Copilot pushToast={pushToast} />}
           {tab === 'System' && <SystemStatus pushToast={pushToast} />}
         </main>
-        <UploadRail pushToast={pushToast} onJobDone={(name) => refreshSurveys(name)} />
+        <UploadRail
+          pushToast={pushToast}
+          onJobDone={(name) => refreshSurveys(name)}
+          canUpload={can('upload')}
+        />
       </div>
 
       {/* 6 · footer — navy band, honest attribution */}

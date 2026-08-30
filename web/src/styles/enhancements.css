@@ -283,3 +283,184 @@
   border-left: 3px solid var(--saffron);
   color: var(--ink);
 }
+
+/* ---- RBAC chrome ---- */
+/* Identity and sign-out in the government strip. */
+.who {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-micro);
+  color: #fff;
+  opacity: 0.92;
+}
+
+.role-chip {
+  padding: 1px 6px;
+  border-radius: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: var(--fs-micro);
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+/* Supervisor and admin read as "can change things" — saffron is the state
+   colour everywhere else in this console, so it carries that meaning here. */
+.role-chip.role-admin,
+.role-chip.role-supervisor {
+  background: var(--saffron);
+  border-color: var(--saffron);
+  color: #fff;
+}
+
+.btn.tiny.signout {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.btn.tiny.signout:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-booting {
+  padding: 40px;
+  color: var(--ink-dim);
+  font-size: var(--fs-small, 0.8125rem);
+}
+
+.dropzone.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-style: solid;
+}
+
+/* ---- login screen ---- */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--paper);
+}
+
+.login-strip {
+  width: 100%;
+  padding: 6px 16px;
+  background: var(--navy-deep);
+  color: #fff;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.04em;
+}
+
+.login-card {
+  margin: auto;
+  width: min(420px, calc(100vw - 32px));
+  background: var(--panel);
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  padding: 28px 28px 22px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.login-wordmark {
+  margin: 0;
+  font-size: 1.45rem;
+  letter-spacing: 0.06em;
+  color: var(--navy);
+}
+
+.login-sub {
+  margin: 2px 0 0;
+  font-size: var(--fs-small, 0.8125rem);
+  color: var(--ink-dim);
+}
+
+.login-tricolor {
+  display: flex;
+  height: 3px;
+  margin: 16px 0 20px;
+}
+
+.login-tricolor span {
+  flex: 1;
+}
+
+/* The band colours in styles.css are scoped to .tricolor, so the login
+   ribbon needs its own — without these the spans render invisible. */
+.login-tricolor .t-saffron {
+  background: var(--saffron-band);
+}
+
+.login-tricolor .t-white {
+  background: var(--white-band);
+}
+
+.login-tricolor .t-green {
+  background: var(--green-band);
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.login-field input {
+  padding: 7px 10px;
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.login-field input:focus {
+  outline: 2px solid var(--focus-navy);
+  outline-offset: 1px;
+}
+
+.login-error {
+  margin: 0;
+  padding: 7px 10px;
+  background: #FDF1EF;
+  border-left: 2px solid var(--error);
+  font-size: var(--fs-small, 0.8125rem);
+  color: var(--ink);
+}
+
+.login-submit {
+  margin-top: 2px;
+}
+
+.login-note {
+  margin: 18px 0 0;
+  font-size: var(--fs-micro);
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+.login-footer {
+  padding: 14px 16px 22px;
+  text-align: center;
+  font-size: var(--fs-micro);
+  color: var(--ink-dim);
+  line-height: 1.6;
+}
+
+.login-disclaimer {
+  color: var(--ink-faint);
+}
