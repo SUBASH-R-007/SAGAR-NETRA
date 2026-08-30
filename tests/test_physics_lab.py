@@ -24,7 +24,7 @@ from api.physics_lab import MAX_TARGETS, geometry_report, shadow_round_trip
 
 @pytest.fixture(scope="module")
 def client():
-    return TestClient(create_app())
+    return TestClient(create_app(require_auth=False))
 
 
 # ------------------------------------------------------------ shadow model --

@@ -15,14 +15,17 @@ import threading
 import time
 import urllib.request
 from collections import deque
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import (
+    Depends,
     FastAPI,
     File,
     Form,
     HTTPException,
+    Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
@@ -31,6 +34,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from api import auth as auth_mod
 from api import copilot as copilot_mod
 from api import physics_lab
 from api.db import ContactRepo
@@ -87,6 +91,18 @@ class CopilotRequest(BaseModel):
     question: str
 
 
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    role: auth_mod.Role
+    full_name: str = ''
+
+
 class ShadowRequest(BaseModel):
     """One object on a flat seabed, for the shadow forward/inverse panel."""
 
@@ -120,7 +136,15 @@ def create_app(
     upload_dir: str | Path | None = None,
     output_root: str | Path | None = None,
     detector_factory: Any = None,
+    require_auth: bool = True,
 ) -> FastAPI:
+    """Build the application.
+
+    ``require_auth`` gates the RBAC layer. It defaults to True so the shipped
+    server is closed by default — an access-control system that has to be
+    switched on is one that ships switched off. Tests and offline scripts pass
+    False to exercise the pipeline without a session.
+    """
     app = FastAPI(title="SAGAR-NETRA DRISHTI Console", version="0.1.0")
     app.state.repo = repo or ContactRepo(REPO_ROOT / "data" / "contacts.db")
     app.state.jobs = JobRegistry()
@@ -133,6 +157,57 @@ def create_app(
     #: edge telemetry updated after every processing run (batch or stream).
     app.state.last_run = None
     app.state.tiles_per_s_last = None
+    app.state.require_auth = require_auth
+
+    # ------------------------------------------------------------- rbac --
+    # Enforcement is a dependency on the route, never a hidden button: the UI
+    # hides what a user cannot do as a courtesy, and this is what actually
+    # stops them.
+
+    def current_user(request: Request) -> auth_mod.User | None:
+        """Resolve the session cookie to a user, or None."""
+        if not app.state.require_auth:
+            # Auth disabled: every request acts as a local admin. Used by the
+            # test suite and by offline scripts driving the app in-process.
+            return auth_mod.User(username="local", role=auth_mod.Role.admin)
+        token = request.cookies.get(auth_mod.SESSION_COOKIE)
+        if not token:
+            return None
+        row = app.state.repo.get_session(auth_mod.token_fingerprint(token))
+        if row is None or auth_mod.is_expired(row["expires_at"]):
+            return None
+        try:
+            role = auth_mod.Role(row["role"])
+        except ValueError:
+            # A role removed from the enum must not authenticate as anything.
+            return None
+        return auth_mod.User(
+            username=row["username"], role=role, full_name=row["full_name"] or ""
+        )
+
+    def require(permission: auth_mod.Permission):
+        """Dependency factory: 401 when unauthenticated, 403 when unpermitted.
+
+        The two are kept distinct because they mean different things to a
+        client — 401 says "log in", 403 says "your role cannot do this", and
+        collapsing them would have the console offer a login box to someone
+        who is already signed in.
+        """
+
+        def guard(request: Request) -> auth_mod.User:
+            user = current_user(request)
+            if user is None:
+                raise HTTPException(401, "authentication required")
+            if not user.can(permission):
+                raise HTTPException(
+                    403,
+                    f"role '{user.role}' lacks '{permission}' permission",
+                )
+            return user
+
+        return guard
+
+    app.state.current_user = current_user
 
     def _job_snapshot(job: Job) -> dict[str, Any]:
         """Job snapshot plus stream-mode extras (mode + bounded event window)."""
@@ -143,6 +218,104 @@ def create_app(
             with meta["lock"]:
                 snap["recent_events"] = list(meta["events"])
         return snap
+
+    # --------------------------------------------------------------- auth --
+
+    @app.post("/api/auth/login")
+    def login(body: LoginRequest, response: Response) -> dict[str, Any]:
+        """Exchange credentials for a session cookie.
+
+        The failure message is deliberately identical for an unknown user and
+        a wrong password: distinguishing them tells an attacker which usernames
+        exist. The password hash is still verified against a dummy when the
+        user is missing, so the two paths take comparable time.
+        """
+        row = app.state.repo.get_user(body.username)
+        stored = row["password_hash"] if row else auth_mod.DUMMY_HASH
+        if not auth_mod.verify_password(body.password, stored) or row is None:
+            raise HTTPException(401, "invalid username or password")
+
+        app.state.repo.purge_expired_sessions(
+            datetime.now(tz=UTC).isoformat(timespec="seconds")
+        )
+        token = auth_mod.new_session_token()
+        app.state.repo.create_session(
+            auth_mod.token_fingerprint(token), row["username"], auth_mod.session_expiry()
+        )
+        response.set_cookie(
+            auth_mod.SESSION_COOKIE, token,
+            httponly=True,       # unreadable to JS: an XSS bug cannot steal it
+            samesite="lax",      # blocks cross-site POSTs from carrying it
+            max_age=int(auth_mod.SESSION_TTL.total_seconds()),
+            path="/",
+            # secure=True belongs here behind TLS. The console ships for
+            # http://<pi>:8000 on a vessel LAN, where setting it would stop
+            # login working at all; see README section 12.
+        )
+        role = auth_mod.Role(row["role"])
+        return {
+            "username": row["username"],
+            "role": role.value,
+            "full_name": row["full_name"] or "",
+            "permissions": sorted(p.value for p in auth_mod.ROLE_PERMISSIONS[role]),
+        }
+
+    @app.post("/api/auth/logout")
+    def logout(request: Request, response: Response) -> dict[str, str]:
+        token = request.cookies.get(auth_mod.SESSION_COOKIE)
+        if token:
+            app.state.repo.delete_session(auth_mod.token_fingerprint(token))
+        response.delete_cookie(auth_mod.SESSION_COOKIE, path="/")
+        return {"status": "logged out"}
+
+    @app.get("/api/auth/me")
+    def whoami(request: Request) -> dict[str, Any]:
+        """Who the caller is and what they may do.
+
+        The console calls this on load to decide what to render. It answers
+        401 rather than an anonymous body so the frontend has one unambiguous
+        signal to show the login screen.
+        """
+        user = current_user(request)
+        if user is None:
+            raise HTTPException(401, "authentication required")
+        return {
+            "username": user.username,
+            "role": user.role.value,
+            "full_name": user.full_name,
+            "permissions": sorted(p.value for p in user.permissions),
+            "auth_enabled": bool(app.state.require_auth),
+        }
+
+    @app.get("/api/auth/users")
+    def list_users(
+        user=Depends(require(auth_mod.Permission.manage_users)),  # noqa: B008
+    ) -> list[dict[str, Any]]:
+        return app.state.repo.list_users()
+
+    @app.post("/api/auth/users")
+    def create_user(
+        body: CreateUserRequest,
+        user=Depends(require(auth_mod.Permission.manage_users)),  # noqa: B008
+    ) -> dict[str, str]:
+        if len(body.password) < 8:
+            raise HTTPException(422, "password must be at least 8 characters")
+        app.state.repo.add_user(
+            body.username, body.role.value,
+            auth_mod.hash_password(body.password), body.full_name,
+        )
+        return {"username": body.username, "role": body.role.value}
+
+    @app.delete("/api/auth/users/{username}")
+    def deactivate_user(
+        username: str,
+        user=Depends(require(auth_mod.Permission.manage_users)),  # noqa: B008
+    ) -> dict[str, Any]:
+        if username == user.username:
+            raise HTTPException(422, "refusing to deactivate the acting account")
+        if not app.state.repo.deactivate_user(username):
+            raise HTTPException(404, f"unknown or already inactive user {username!r}")
+        return {"username": username, "active": False}
 
     # ------------------------------------------------------------- health --
 
@@ -193,6 +366,7 @@ def create_app(
         heading_deg: float | None = Form(None),  # noqa: B008 - FastAPI idiom
         sensor_depth_m: float | None = Form(None),  # noqa: B008 - FastAPI idiom
         layout: str = Form("combined"),  # noqa: B008 - FastAPI idiom
+        user=Depends(require(auth_mod.Permission.upload)),  # noqa: B008
     ) -> dict[str, str]:
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in UPLOAD_SUFFIXES:
@@ -371,7 +545,9 @@ def create_app(
         return app.state.repo.surveys()
 
     @app.delete("/api/surveys/{name}")
-    def delete_survey(name: str) -> dict[str, Any]:
+    def delete_survey(
+        name: str, user=Depends(require(auth_mod.Permission.delete_survey)),  # noqa: B008
+    ) -> dict[str, Any]:
         """Remove a survey and its contacts from the store.
 
         Exists for console hygiene: a mistaken test upload should not need
@@ -409,16 +585,28 @@ def create_app(
         return found.model_dump(mode="json")
 
     @app.post("/api/contacts/{contact_id}/review")
-    def review(contact_id: str, body: ReviewRequest) -> dict[str, Any]:
-        updated = app.state.repo.set_review(contact_id, body.status, body.notes)
+    def review(
+        contact_id: str,
+        body: ReviewRequest,
+        user=Depends(require(auth_mod.Permission.review)),  # noqa: B008
+    ) -> dict[str, Any]:
+        updated = app.state.repo.set_review(
+            contact_id, body.status, body.notes, actor=user.username
+        )
         if updated is None:
             raise HTTPException(404, "unknown contact")
         return updated.model_dump(mode="json")
 
     @app.post("/api/contacts/{contact_id}/recovery")
-    def recovery(contact_id: str, body: RecoveryRequest) -> dict[str, Any]:
+    def recovery(
+        contact_id: str,
+        body: RecoveryRequest,
+        user=Depends(require(auth_mod.Permission.recover)),  # noqa: B008
+    ) -> dict[str, Any]:
         """Advance the recovery workflow: flagged -> assigned -> retrieved."""
-        updated = app.state.repo.set_recovery(contact_id, body.status)
+        updated = app.state.repo.set_recovery(
+            contact_id, body.status, actor=user.username
+        )
         if updated is None:
             raise HTTPException(404, "unknown contact")
         return updated.model_dump(mode="json")

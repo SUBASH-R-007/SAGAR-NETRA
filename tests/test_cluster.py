@@ -118,6 +118,7 @@ def test_api_route_cluster_param(tmp_path) -> None:
     repo = ContactRepo(tmp_path / "contacts.db")
     repo.add_contacts(contacts)
     app = create_app(
+        require_auth=False,  # exercise the pipeline, not the RBAC layer (tests/test_auth.py)
         repo=repo, upload_dir=tmp_path / "uploads", output_root=tmp_path / "outputs"
     )
     with TestClient(app) as client:

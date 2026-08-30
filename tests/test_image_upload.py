@@ -57,6 +57,7 @@ def waterfall_png(tmp_path_factory):
 def client(tmp_path_factory):
     root = tmp_path_factory.mktemp("imgapi")
     app = create_app(
+        require_auth=False,  # exercise the pipeline, not the RBAC layer (tests/test_auth.py)
         repo=ContactRepo(root / "c.db"),
         upload_dir=root / "up",
         output_root=root / "out",
