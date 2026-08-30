@@ -1,0 +1,9 @@
+# Line-ending policy.
+#
+# Git on Windows may rewrite LF to CRLF on checkout. For a shell script that
+# is not cosmetic: a CRLF shebang makes Linux report "bad interpreter", which
+# is a confusing failure to hit on a Pi at deployment time. Pin the files
+# whose endings are functional.
+*.sh        text eol=lf
+*.service   text eol=lf
+Dockerfile  text eol=lf
