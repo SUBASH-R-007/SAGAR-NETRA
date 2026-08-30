@@ -64,6 +64,13 @@ def seed(db_path: Path, specs: list[tuple[str, str, str, str | None]]) -> None:
                 f"{', '.join(r.value for r in Role)}"
             ) from None
         pw = password or generate_password()
+        # add_user is INSERT OR REPLACE, so re-seeding an existing account with
+        # --user (which carries no name) would blank its display name. Resetting
+        # a forgotten password should not quietly cost the account its identity,
+        # so an empty name inherits whatever is already stored.
+        if not full_name:
+            existing = repo.get_user(username)
+            full_name = (existing or {}).get("full_name") or ""
         repo.add_user(username, role.value, hash_password(pw), full_name)
         rows.append((username, role.value, pw, sorted(
             p.value for p in ROLE_PERMISSIONS[role]
