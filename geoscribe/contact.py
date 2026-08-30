@@ -82,7 +82,17 @@ class SeverityBreakdown(BaseModel):
     height: float = 0.0
     depth: float = 0.0
     proximity: float = 0.0
-    nearest_layer: str | None = None
+    nearest_layer: str | None = Field(
+        default=None, description="human-readable name of the closest mapped feature"
+    )
+    nearest_layer_kind: str | None = Field(
+        default=None,
+        description=(
+            "that feature's `kind` (mpa / turtle_zone / shipping_lane). Kept "
+            "separate from the name because the name is demo-specific prose "
+            "while the kind is what configs/actions.yaml keys its authorities on"
+        ),
+    )
     nearest_layer_distance_m: float | None = None
 
 
@@ -133,8 +143,23 @@ class Contact(BaseModel):
     recommended_action: str | None = Field(
         default=None,
         description=(
-            "operator instruction from the (class, severity band) rule table; "
-            "see geoscribe.report.recommended_action_for"
+            "operator instruction resolved from configs/actions.yaml; "
+            "see geoscribe.actions.recommend"
+        ),
+    )
+    action_rule: str | None = Field(
+        default=None,
+        description=(
+            "which branch produced recommended_action (base, high_severity, "
+            "near_sensitive_zone, deep, shallow, always_override) - shown so an "
+            "operator can see the rule that fired, not just its conclusion"
+        ),
+    )
+    action_requires: str | None = Field(
+        default=None,
+        description=(
+            "permission needed to carry the action out (api/auth.py). Every role "
+            "sees the recommendation; only a role holding this is offered the control"
         ),
     )
     position_accuracy_m: float = Field(

@@ -464,3 +464,63 @@
 .login-disclaimer {
   color: var(--ink-faint);
 }
+
+/* ---- recommended action (configs/actions.yaml) ---- */
+/* The rule that fired, shown beside its conclusion: an operator should be able
+   to see WHY an instruction appeared, not just obey it. */
+.rule-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--well);
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.rec-action.urgent,
+.pop-action.urgent .pop-action-label {
+  color: var(--sev-critical);
+  font-weight: 600;
+}
+
+.pop-action {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--well);
+  border-left: 2px solid var(--navy);
+}
+
+/* always_override classes — human body, mine, aircraft — are the ones where
+   under-reacting is not symmetric with over-reacting. They read as critical. */
+.pop-action.urgent {
+  background: #FDF1EF;
+  border-left-color: var(--sev-critical);
+}
+
+.pop-action-label {
+  display: block;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  margin-bottom: 3px;
+}
+
+.pop-action p {
+  margin: 0;
+  font-size: var(--fs-small, 0.8125rem);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.pop-action-gate {
+  margin-top: 6px !important;
+  font-size: var(--fs-micro) !important;
+  color: var(--ink-faint) !important;
+}

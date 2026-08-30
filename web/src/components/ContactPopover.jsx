@@ -12,7 +12,11 @@ export default function ContactPopover({
   pushToast,
   showEvidence = false,
   canReview = true,
+  permissions = null,
 } ) {
+  // null = caller did not pass permissions (e.g. an older call site): assume
+  // capable rather than showing a misleading restriction notice.
+  const canAct = (needed) => permissions === null || permissions.includes(needed)
   const [busy, setBusy] = useState(false)
   const [notes, setNotes] = useState('')
   const c = contact
@@ -70,6 +74,27 @@ export default function ContactPopover({
         <b className={`rv rv-${c.review}`}>{c.review}</b>
       </div>
       <PhysicsBadges physics={c.physics} />
+      {c.recommended_action && (
+        <div
+          className={`pop-action${c.action_rule === 'always_override' ? ' urgent' : ''}`}
+        >
+          <span className="pop-action-label">
+            Recommended action
+            {c.action_rule && c.action_rule !== 'base' && (
+              <span className="rule-tag">{c.action_rule.replace(/_/g, ' ')}</span>
+            )}
+          </span>
+          <p>{c.recommended_action}</p>
+          {/* Every role sees the advice; only a role holding the permission is
+              offered the control. Saying so is better than a silent absence. */}
+          {c.action_requires && !canAct(c.action_requires) && (
+            <p className="pop-action-gate mono">
+              requires ‘{c.action_requires}’ permission — your role can view this
+              recommendation but not carry it out
+            </p>
+          )}
+        </div>
+      )}
       {canReview && (
       <input
         className="pop-notes"

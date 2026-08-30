@@ -267,8 +267,20 @@ export default function ContactsTable({
                     </td>
                     <td>
                       {c.recommended_action ? (
-                        <span className="rec-action" title={c.recommended_action}>
+                        <span
+                          className={`rec-action${
+                            c.action_rule === 'always_override' ? ' urgent' : ''
+                          }`}
+                          title={`${c.recommended_action}
+
+rule: ${
+                            c.action_rule || 'base'
+                          }${c.action_requires ? ` · needs '${c.action_requires}'` : ''}`}
+                        >
                           {c.recommended_action}
+                          {c.action_rule && c.action_rule !== 'base' && (
+                            <span className="rule-tag">{c.action_rule.replace(/_/g, ' ')}</span>
+                          )}
                         </span>
                       ) : (
                         <span className="muted">—</span>

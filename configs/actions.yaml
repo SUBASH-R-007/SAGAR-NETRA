@@ -1,0 +1,84 @@
+# Recommended-action rules: what an operator should DO about a contact.
+#
+# Replaces a hard-coded (class, severity-band) table. The point of moving it
+# here is that the people who know the right response — a survey chief, a
+# port authority liaison — can change the wording without touching Python.
+#
+# Resolution order in geoscribe/actions.py, most specific first:
+#
+#   1. always_override   the class alone decides; severity never softens it
+#   2. near_sensitive_zone   within `zone_radius_m` of a mapped habitat/lane
+#   3. high_severity     severity >= `high_severity_at`
+#   4. deep / shallow    depth bands
+#   5. base              the fallback
+#
+# `requires` names the permission needed to carry the action out (see
+# api/auth.py). The console shows every role the recommendation — an analyst
+# must be able to see that a wreck needs an ROV — but only a role holding the
+# permission is offered the control. Advice is not the same as authority.
+
+thresholds:
+  zone_radius_m: 500      # "near" a sensitive zone
+  high_severity_at: 75    # matches the severity band table in report.py
+  deep_m: 40              # beyond safe air-diving depth
+  shallow_m: 10           # shallow enough to be a navigation hazard
+
+# Layer kind -> who must be told before anyone intervenes. Keys match the
+# `kind` property in data/layers/*.geojson.
+zone_authorities:
+  mpa: "the marine protected area authority"
+  turtle_zone: "the Wildlife Warden"
+  shipping_lane: "the Directorate General of Shipping"
+
+classes:
+  ghost_net:
+    base: "Entanglement hazard - flag for ROV recovery with cutting tools"
+    high_severity: "URGENT: active entanglement risk - prioritise for immediate recovery"
+    near_sensitive_zone: "Entanglement hazard in protected habitat - notify {zone_authority} before recovery"
+    deep: "Entanglement hazard beyond diver depth - ROV recovery required"
+    requires: recover
+
+  human_body:
+    base: "Notify SAR authority and local police immediately. Do not disturb."
+    # Never softened by severity: a low-confidence human body is still a human
+    # body, and the cost of under-reacting is not symmetric with over-reacting.
+    always_override: true
+    requires: recover
+
+  mine_like:
+    base: "Do NOT approach - notify naval EOD. Record position and clear the area."
+    always_override: true
+    requires: recover
+
+  container:
+    base: "Assess contents before recovery - possible hazardous cargo"
+    shallow: "Navigational hazard in shallow water - notify the Directorate General of Shipping"
+    near_sensitive_zone: "Possible hazardous cargo near protected habitat - notify {zone_authority}"
+    requires: recover
+
+  cylinder_drum:
+    base: "Possible chemical container - sample before recovery"
+    near_sensitive_zone: "Possible chemical container near protected habitat - notify {zone_authority}"
+    requires: recover
+
+  pipeline:
+    base: "Verify against cable/pipeline charts before any intervention"
+    requires: recover
+
+  wreck:
+    base: "Survey-only - check heritage status before any disturbance"
+    shallow: "Navigational hazard in shallow water - notify the Directorate General of Shipping"
+    requires: recover
+
+  aircraft:
+    base: "Notify DGCA and naval authorities - do not disturb"
+    always_override: true
+    requires: recover
+
+  tire:
+    base: "Low priority - batch with other recoveries in the same zone"
+    requires: recover
+
+  unknown_anomaly:
+    base: "Unclassified - recommend resurvey or ROV visual inspection"
+    requires: review

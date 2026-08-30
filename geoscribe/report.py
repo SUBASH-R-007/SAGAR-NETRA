@@ -26,32 +26,17 @@ SEVERITY_BANDS = (  # (min score, label, KML/HTML color)
 #: Confidence floor (percent) for the summary block's ``high_confidence`` count.
 HIGH_CONFIDENCE_PCT = 70.0
 
-#: Severity band label -> operator triage priority. The *thresholds* live only
-#: in :data:`SEVERITY_BANDS` (critical >= 75, high >= 50), so colors, priority
-#: and recommended actions can never disagree about where a band starts.
+#: Severity band label -> operator triage priority. The thresholds live only in
+#: :data:`SEVERITY_BANDS`, so band colors and priority cannot disagree about
+#: where a band starts. Recommended *actions* carry their own threshold, in
+#: ``configs/actions.yaml``, deliberately: an operator must be able to retune
+#: when an instruction fires without also repainting the map.
 PRIORITY_BY_BAND: dict[str, str] = {
     "critical": "HIGH",
     "high": "MEDIUM",
     "medium": "LOW",
     "low": "LOW",
 }
-
-#: Bands counted as "high severity" by the action rule table (score >= 50).
-_HIGH_BANDS: tuple[str, ...] = ("critical", "high")
-
-#: Recommended-action rule table, first matching row wins:
-#: (classes, bands the rule applies to — None matches any severity, action).
-#: Class-only rules come first: a possible victim or a mine-like object needs
-#: the same response regardless of how the severity blend happened to score it.
-ACTION_RULES: tuple[tuple[frozenset[str], tuple[str, ...] | None, str], ...] = (
-    (frozenset({"human_body"}), None, "Notify SAR authority immediately"),
-    (frozenset({"mine_like"}), None, "Do NOT approach — notify naval EOD"),
-    (frozenset({"ghost_net"}), _HIGH_BANDS, "Entanglement hazard — flag for ROV recovery"),
-    (frozenset({"container", "wreck"}), _HIGH_BANDS, "Navigation hazard — report to port authority"),
-)
-
-#: Fallback when no rule matches: the contact is logged, not escalated.
-DEFAULT_ACTION = "Log and monitor"
 
 
 def severity_band(score: float) -> tuple[str, str]:
@@ -66,15 +51,6 @@ def priority_for(severity: float) -> str:
     (>= 75), MEDIUM in the high band (>= 50), LOW below."""
     band, _ = severity_band(severity)
     return PRIORITY_BY_BAND[band]
-
-
-def recommended_action_for(cls: str, severity: float) -> str:
-    """Operator instruction from the :data:`ACTION_RULES` (class, band) table."""
-    band, _ = severity_band(severity)
-    for classes, bands, action in ACTION_RULES:
-        if cls in classes and (bands is None or band in bands):
-            return action
-    return DEFAULT_ACTION
 
 
 def _now_iso() -> str:

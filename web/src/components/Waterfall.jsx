@@ -9,7 +9,9 @@ import EmptyState from './EmptyState'
 //   port:      x = n_port_cols - 1 - col   (so col1 maps to the left edge)
 //   starboard: x = n_port_cols + col
 //   y = ping row
-export default function Waterfall({ survey, contacts, onReview, pushToast, canReview }) {
+export default function Waterfall({
+  survey, contacts, onReview, pushToast, canReview, permissions,
+}) {
   const [meta, setMeta] = useState(null)
   const [metaErr, setMetaErr] = useState(null)
   const [zoom, setZoom] = useState(1)
@@ -181,6 +183,7 @@ export default function Waterfall({ survey, contacts, onReview, pushToast, canRe
               onReview={onReview}
               pushToast={pushToast}
               canReview={canReview}
+              permissions={permissions}
               showEvidence
             />
           </aside>

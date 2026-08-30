@@ -305,6 +305,7 @@ export default function App() {
               pushToast={pushToast}
               hasSurvey={Boolean(survey)}
               canReview={can('review')}
+              permissions={me.permissions}
             />
           )}
           {tab === 'Waterfall' && (
@@ -314,6 +315,7 @@ export default function App() {
               onReview={onReview}
               pushToast={pushToast}
               canReview={can('review')}
+              permissions={me.permissions}
             />
           )}
           {tab === 'Contacts' && (

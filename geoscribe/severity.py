@@ -163,6 +163,7 @@ def severity_score(
 
     proximity = 0.0
     nearest_name: str | None = None
+    nearest_kind: str | None = None
     nearest_dist: float | None = None
     for layer in layers or []:
         for feature in layer.features:
@@ -171,9 +172,10 @@ def severity_score(
             contribution = layer.weight * math.exp(-dist / proximity_decay_m)
             if contribution > proximity:
                 proximity = contribution
-                nearest_name = str(
-                    feature.get("properties", {}).get("name", layer.name)
-                )
+                properties = feature.get("properties", {})
+                nearest_name = str(properties.get("name", layer.name))
+                kind = properties.get("kind")
+                nearest_kind = None if kind is None else str(kind)
                 nearest_dist = dist
 
     total = (
@@ -192,6 +194,7 @@ def severity_score(
         depth=round(depth, 3),
         proximity=round(proximity, 3),
         nearest_layer=nearest_name,
+        nearest_layer_kind=nearest_kind,
         nearest_layer_distance_m=None if nearest_dist is None else round(nearest_dist, 1),
     )
     return score, breakdown

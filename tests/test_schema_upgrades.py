@@ -17,7 +17,6 @@ from geoscribe.build import (
 from geoscribe.contact import Contact, contacts_json_schema
 from geoscribe.report import (
     priority_for,
-    recommended_action_for,
     write_all,
     write_contacts_csv,
 )
@@ -84,26 +83,6 @@ def test_priority_thresholds(severity: float, expected: str) -> None:
     assert priority_for(severity) == expected
 
 
-@pytest.mark.parametrize(
-    ("cls", "severity", "expected"),
-    [
-        ("ghost_net", 80.0, "Entanglement hazard — flag for ROV recovery"),
-        ("ghost_net", 55.0, "Entanglement hazard — flag for ROV recovery"),
-        ("ghost_net", 40.0, "Log and monitor"),
-        ("human_body", 5.0, "Notify SAR authority immediately"),
-        ("human_body", 95.0, "Notify SAR authority immediately"),
-        ("container", 60.0, "Navigation hazard — report to port authority"),
-        ("wreck", 90.0, "Navigation hazard — report to port authority"),
-        ("container", 30.0, "Log and monitor"),
-        ("mine_like", 10.0, "Do NOT approach — notify naval EOD"),
-        ("mine_like", 99.0, "Do NOT approach — notify naval EOD"),
-        ("tire", 90.0, "Log and monitor"),
-    ],
-)
-def test_recommended_action_rules(cls: str, severity: float, expected: str) -> None:
-    assert recommended_action_for(cls, severity) == expected
-
-
 def test_built_contacts_carry_triage_fields(processed) -> None:
     """Triage fields derive from severity, and the position budget from range.
 
@@ -118,7 +97,11 @@ def test_built_contacts_carry_triage_fields(processed) -> None:
 
     for c in contacts:
         assert c.priority == priority_for(c.severity)
-        assert c.recommended_action == recommended_action_for(c.cls, c.severity)
+        # The action comes from configs/actions.yaml via geoscribe.actions,
+        # resolved with this contact's own zone and depth context — see
+        # tests/test_actions.py for the precedence rules themselves.
+        assert c.recommended_action
+        assert c.action_rule and c.action_requires
 
         ground_range_m = (
             0.5 * (c.pixel.col0 + c.pixel.col1) + 0.5

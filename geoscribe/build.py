@@ -15,9 +15,10 @@ import numpy as np
 import yaml
 from pyproj import Geod
 
+from geoscribe.actions import recommend
 from geoscribe.contact import Contact, Dimensions, PhysicsEvidence, PixelRef
 from geoscribe.geotag import bbox_to_geo
-from geoscribe.report import priority_for, recommended_action_for
+from geoscribe.report import priority_for
 from geoscribe.severity import Layer, severity_score
 from physicheck.evidence import render_evidence_card
 from physicheck.verify import VerifiedDetection
@@ -281,6 +282,14 @@ def build_contacts(
             hazard_table=hazard_table,
         )
 
+        action = recommend(
+            det.cls,
+            severity=score,
+            depth_m=depth,
+            nearest_layer_kind=breakdown.nearest_layer_kind,
+            nearest_layer_distance_m=breakdown.nearest_layer_distance_m,
+        )
+
         layback_known = layback_m is not None or bool(np.isfinite(rec["layback"]))
         accuracy = position_accuracy(
             pre.ground.ground_res,
@@ -335,7 +344,11 @@ def build_contacts(
                 evidence_png=evidence_png,
                 thumbnail_png=thumb_png,
                 priority=priority_for(score),
-                recommended_action=recommended_action_for(det.cls, score),
+                # Zone context comes from the severity breakdown, which already
+                # resolved the nearest mapped layer and its distance.
+                recommended_action=action.action,
+                action_rule=action.rule,
+                action_requires=action.requires,
                 position_accuracy_m=round(accuracy, 2),
             )
         )
