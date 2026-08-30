@@ -44,6 +44,7 @@ export default function App() {
   const [contacts, setContacts] = useState([])
   const [cls, setCls] = useState('all')
   const [minConf, setMinConf] = useState(0)
+  const [review, setReview] = useState('all')
   const [toasts, setToasts] = useState([])
   const [fontStep, setFontStep] = useState(readStoredFontStep)
 
@@ -84,6 +85,7 @@ export default function App() {
   // filters are applied client-side so they are instant and shared by every tab.
   useEffect(() => {
     setCls('all')
+    setReview('all')
     if (!survey) {
       setContacts([])
       return undefined
@@ -91,7 +93,15 @@ export default function App() {
     let alive = true
     fetchContacts(survey)
       .then((res) => {
-        if (alive) setContacts(res.contacts || [])
+        if (!alive) return
+        const rows = res.contacts || []
+        setContacts(rows)
+        if (rows.length >= 500) {
+          pushToast(
+            'Showing the first 500 contacts - filter by class or confidence to narrow',
+            'info',
+          )
+        }
       })
       .catch((err) => {
         if (alive) {
@@ -109,11 +119,33 @@ export default function App() {
     setContacts((cs) => cs.map((c) => (c.id === updated.id ? updated : c)))
   }, [])
 
+  const onDeleteSurvey = useCallback(async () => {
+    if (!survey) return
+    // window.confirm: deliberate friction - this drops every contact and
+    // review verdict for the survey from the store.
+    if (!window.confirm(`Delete survey ${survey} and all its contacts?`)) return
+    try {
+      const { deleteSurvey } = await import('./api')
+      await deleteSurvey(survey)
+      pushToast(`Deleted ${survey}`, 'ok')
+      setSurvey('')
+      refreshSurveys()
+    } catch (err) {
+      pushToast(`Delete failed: ${err.message}`, 'error')
+    }
+  }, [survey, pushToast, refreshSurveys])
+
   const classes = useMemo(() => [...new Set(contacts.map((c) => c.cls))].sort(), [contacts])
 
   const filtered = useMemo(
-    () => contacts.filter((c) => (cls === 'all' || c.cls === cls) && c.confidence >= minConf),
-    [contacts, cls, minConf],
+    () =>
+      contacts.filter(
+        (c) =>
+          (cls === 'all' || c.cls === cls) &&
+          c.confidence >= minConf &&
+          (review === 'all' || c.review === review),
+      ),
+    [contacts, cls, minConf, review],
   )
 
   return (
@@ -205,8 +237,11 @@ export default function App() {
           onCls={setCls}
           minConf={minConf}
           onMinConf={setMinConf}
+          review={review}
+          onReview={setReview}
           shown={filtered.length}
           total={contacts.length}
+          onDeleteSurvey={onDeleteSurvey}
         />
       )}
 

@@ -147,3 +147,50 @@ def test_display_image_is_not_gain_normalized_twice(waterfall_png, small_scene) 
 
     forced = preprocess(pa, config={"egn": {"enabled": True}})
     assert "egn" in forced.timings, "an explicit caller override must still win"
+
+
+def test_out_of_range_coordinates_are_refused(client, waterfall_png) -> None:
+    """A typo like lat=91 or lon=999 must fail loudly at upload, not geotag
+    contacts into an impossible ocean. (Found the hard way: an upload with
+    swapped fields put 52 contacts in the Arctic, and the map rendered an
+    empty Chennai coast.)"""
+    r = _upload(client, waterfall_png, **{**GEOMETRY, "lat": 91.0})
+    assert r.status_code == 422 and "lat" in r.json()["detail"]
+    r = _upload(client, waterfall_png, **{**GEOMETRY, "lon": -190.0})
+    assert r.status_code == 422 and "lon" in r.json()["detail"]
+
+
+def test_half_supplied_position_is_refused(client, waterfall_png) -> None:
+    """lat without lon (or vice versa) is always a form mistake."""
+    geom = {k: v for k, v in GEOMETRY.items() if k != "lon"}
+    r = _upload(client, waterfall_png, **geom)
+    assert r.status_code == 422 and "together" in r.json()["detail"]
+
+
+def test_survey_delete_removes_contacts_and_404s_unknown(client, waterfall_png) -> None:
+    """Console hygiene: a mistaken upload must be removable without SQLite
+    surgery, and deleting nonsense must say so."""
+    name = "delete_me.png"
+    with waterfall_png.open("rb") as fh:
+        r = client.post("/api/upload", files={"file": (name, fh, "image/png")},
+                        data=GEOMETRY)
+    assert r.status_code == 200
+    job = r.json()["job_id"]
+    import time as _t
+    for _ in range(600):
+        snap = client.get(f"/api/jobs/{job}").json()
+        if snap["status"] in ("done", "failed"):
+            break
+        _t.sleep(0.2)
+    assert snap["status"] == "done"
+
+    before = client.get(f"/api/contacts?survey={name}").json()["contacts"]
+    assert before, "the fixture upload must produce contacts to delete"
+
+    r = client.delete(f"/api/surveys/{name}")
+    assert r.status_code == 200
+    assert r.json()["contacts_removed"] == len(before)
+    assert client.get(f"/api/contacts?survey={name}").json()["contacts"] == []
+    assert name not in [s["name"] for s in client.get("/api/surveys").json()]
+
+    assert client.delete(f"/api/surveys/{name}").status_code == 404

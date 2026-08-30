@@ -1,12 +1,15 @@
 export default function FilterBar({
   surveys,
   survey,
+  onDeleteSurvey,
   onSurvey,
   classes,
   cls,
   onCls,
   minConf,
   onMinConf,
+  review,
+  onReview,
   shown,
   total,
 }) {
@@ -22,6 +25,27 @@ export default function FilterBar({
               {s.n_contacts != null ? ` (${s.n_contacts})` : ''}
             </option>
           ))}
+        </select>
+        {survey && onDeleteSurvey && (
+          <button
+            type="button"
+            className="btn tiny danger"
+            title="Delete this survey and all its contacts"
+            onClick={onDeleteSurvey}
+          >
+            delete
+          </button>
+        )}
+      </label>
+
+      <label className="ctl">
+        <span className="ctl-label">Review</span>
+        <select value={review} onChange={(e) => onReview(e.target.value)}
+          aria-label="Filter by review status">
+          <option value="all">all statuses</option>
+          <option value="pending">pending</option>
+          <option value="confirmed">confirmed</option>
+          <option value="rejected">rejected</option>
         </select>
       </label>
 

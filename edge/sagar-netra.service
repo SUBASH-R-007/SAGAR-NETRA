@@ -1,0 +1,24 @@
+# SAGAR-NETRA DRISHTI console — systemd unit for Raspberry Pi OS 64-bit.
+#
+#   sudo cp edge/sagar-netra.service /etc/systemd/system/
+#   sudo systemctl enable --now sagar-netra
+#
+# WorkingDirectory assumes the bundle was unpacked to /home/pi/sagar-netra.
+# Adjust both paths together if you put it elsewhere.
+[Unit]
+Description=SAGAR-NETRA DRISHTI survey console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/sagar-netra
+ExecStart=/home/pi/sagar-netra/.venv/bin/python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+# The console is offline-first; no network egress is expected at inference.
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

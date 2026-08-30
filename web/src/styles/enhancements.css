@@ -245,3 +245,41 @@
 }
 .geom-cell .num-input { width: 100%; }
 .geom-actions { display: flex; gap: 8px; }
+
+/* Image-layout selector in the geometry form: one full-width row above the
+   numeric grid, same control chrome as the numeric inputs. */
+.geom-wide {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.geom-wide select {
+  width: 100%;
+}
+
+/* review-note input in the contact popover */
+.pop-notes {
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-family: var(--sans);
+  font-size: var(--fs-small, 0.8125rem);
+  border: 1px solid var(--hairline-2);
+  border-radius: 2px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+/* declared-geometry honesty banner on the Overview */
+.ov-declared {
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  font-size: var(--fs-small, 0.8125rem);
+  font-family: var(--mono);
+  letter-spacing: 0.02em;
+  background: var(--saffron-wash);
+  border-left: 3px solid var(--saffron);
+  color: var(--ink);
+}

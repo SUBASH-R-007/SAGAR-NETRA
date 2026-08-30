@@ -8,13 +8,15 @@ import SeverityChip from './SeverityChip'
 // waterfall side panel (full evidence card).
 export default function ContactPopover({ contact, onReview, pushToast, showEvidence = false }) {
   const [busy, setBusy] = useState(false)
+  const [notes, setNotes] = useState('')
   const c = contact
 
   const setStatus = async (status) => {
     setBusy(true)
     try {
-      const updated = await postReview(c.id, status)
+      const updated = await postReview(c.id, status, notes.trim() || null)
       onReview(updated)
+      setNotes('')
       pushToast(`${c.id} marked ${status}`, 'ok')
     } catch (err) {
       pushToast(`Review failed: ${err.message}`, 'error')
@@ -46,12 +48,31 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         <b className="mono">{fmtDims(c.dims)}</b>
         <span>Depth</span>
         <b className="mono">{fmtMeters(c.depth_m)}</b>
+        <span>Along-track res</span>
+        <b className="mono" title="Beam footprint at this range - the resolution floor under length_m">
+          {c.dims && c.dims.along_track_resolution_m != null
+            ? `±${c.dims.along_track_resolution_m.toFixed(2)} m`
+            : '—'}
+        </b>
+        <span>Position ±</span>
+        <b className="mono">
+          {c.position_accuracy_m != null ? `${c.position_accuracy_m.toFixed(1)} m` : '—'}
+        </b>
         <span>Brains</span>
         <b>{c.brains && c.brains.length ? c.brains.join(' · ') : '—'}</b>
         <span>Review</span>
         <b className={`rv rv-${c.review}`}>{c.review}</b>
       </div>
       <PhysicsBadges physics={c.physics} />
+      <input
+        className="pop-notes"
+        type="text"
+        maxLength={200}
+        placeholder="Review note (optional) - kept in the audit trail"
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        aria-label="Review note"
+      />
       <div className="pop-actions">
         <button
           type="button"

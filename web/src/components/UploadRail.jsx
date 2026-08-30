@@ -27,6 +27,7 @@ export default function UploadRail({ onJobDone, pushToast }) {
   const [pending, setPending] = useState(null)
   const [geom, setGeom] = useState({
     altitude_m: '', range_m: '', lat: '', lon: '', heading_deg: '90', sensor_depth_m: '',
+    layout: 'combined',
   })
   const fileRef = useRef(null)
   const finishedRef = useRef(new Set())
@@ -204,7 +205,7 @@ export default function UploadRail({ onJobDone, pushToast }) {
         pushToast('Range must exceed altitude — the swath starts past nadir', 'error')
         return
       }
-      const geometry = { altitude_m: altitude, range_m: range }
+      const geometry = { altitude_m: altitude, range_m: range, layout: geom.layout }
       if (geom.lat !== '' && geom.lon !== '') {
         geometry.lat = Number(geom.lat)
         geometry.lon = Number(geom.lon)
@@ -289,6 +290,18 @@ export default function UploadRail({ onJobDone, pushToast }) {
               navigation. State what the sonar was set to and the pipeline can correct
               slant range, measure height from shadow, and geotag every contact.
             </p>
+            <label className="geom-cell geom-wide">
+              <span className="ctl-label">Image layout</span>
+              <select className="num-input" value={geom.layout} onChange={setG('layout')}
+                aria-label="How the image maps to sonar channels">
+                <option value="combined">
+                  Full waterfall — port | starboard, nadir stripe in the centre
+                </option>
+                <option value="single">
+                  Single channel — one side only (target chip, cropped mosaic)
+                </option>
+              </select>
+            </label>
             <div className="geom-grid">
               <label className="geom-cell">
                 <span className="ctl-label">Altitude (m) *</span>

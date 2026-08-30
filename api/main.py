@@ -192,6 +192,7 @@ def create_app(
         lon: float | None = Form(None),  # noqa: B008 - FastAPI idiom
         heading_deg: float | None = Form(None),  # noqa: B008 - FastAPI idiom
         sensor_depth_m: float | None = Form(None),  # noqa: B008 - FastAPI idiom
+        layout: str = Form("combined"),  # noqa: B008 - FastAPI idiom
     ) -> dict[str, str]:
         suffix = Path(file.filename or "upload.bin").suffix.lower()
         if suffix not in UPLOAD_SUFFIXES:
@@ -216,16 +217,34 @@ def create_app(
                 )
             if altitude_m <= 0 or range_m <= 0:
                 raise HTTPException(422, "altitude_m and range_m must be positive")
+            if lat is not None and not -90.0 <= lat <= 90.0:
+                raise HTTPException(422, f"lat {lat} is outside [-90, 90]")
+            if lon is not None and not -180.0 <= lon <= 180.0:
+                raise HTTPException(422, f"lon {lon} is outside [-180, 180]")
+            if (lat is None) != (lon is None):
+                raise HTTPException(
+                    422, "lat and lon must be supplied together or not at all"
+                )
             if range_m <= altitude_m:
                 raise HTTPException(
                     422,
                     f"range_m ({range_m}) must exceed altitude_m ({altitude_m}): a "
                     "swath only exists beyond the first bottom return",
                 )
+            if layout not in ("combined", "single"):
+                raise HTTPException(
+                    422, f"layout must be 'combined' or 'single', got {layout!r}"
+                )
             parser_kwargs = {
                 "altitude_m": float(altitude_m),
                 "slant_range_m": float(range_m),
                 "start_time": time.time(),
+                # 'combined': a full waterfall, port mirrored left of the nadir
+                # stripe, starboard right — split down the middle. 'single': one
+                # channel only (a target chip, a cropped mosaic) — splitting it
+                # would invent a nadir that is not there and mirror half the
+                # scene, so the whole frame is treated as starboard.
+                "combined": layout == "combined",
             }
             if sensor_depth_m is not None:
                 parser_kwargs["sensor_depth_m"] = float(sensor_depth_m)
@@ -350,6 +369,22 @@ def create_app(
     @app.get("/api/surveys")
     def surveys() -> list[dict[str, Any]]:
         return app.state.repo.surveys()
+
+    @app.delete("/api/surveys/{name}")
+    def delete_survey(name: str) -> dict[str, Any]:
+        """Remove a survey and its contacts from the store.
+
+        Exists for console hygiene: a mistaken test upload should not need
+        SQLite surgery to undo. Report files under outputs/ are left on disk
+        on purpose - deleting rows is reversible by re-uploading, deleting
+        generated evidence is not.
+        """
+        removed = app.state.repo.delete_survey(name)
+        if removed == 0 and not any(
+            s["name"] == name for s in app.state.repo.surveys()
+        ):
+            raise HTTPException(404, f"unknown survey {name!r}")
+        return {"survey": name, "contacts_removed": removed}
 
     @app.get("/api/contacts")
     def contacts(

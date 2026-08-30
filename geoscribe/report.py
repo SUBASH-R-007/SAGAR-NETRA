@@ -104,6 +104,7 @@ def _summary_block(
         if area:  # density over a zero-area track would be a lie, keep it null
             summary["debris_density_per_sqkm"] = round(len(contacts) / area, 2)
         summary["sonar_config"] = {
+            "nav_source": survey_stats.get("nav_source"),
             "range_m": survey_stats.get("range_m"),
             "altitude_m": survey_stats.get("altitude_m"),
             "n_pings": survey_stats.get("n_pings"),
