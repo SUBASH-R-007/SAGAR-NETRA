@@ -10,9 +10,9 @@ Smart India Hackathon 2026 · Problem Statement **26057** · Ministry of Earth S
 | | |
 |---|---|
 | **Status** | Complete prototype: 8 milestones + 12 hardening rounds; detector **retrained on real sonar** (UATD + KLSG); edge deployment path exported and verified |
-| **Tests** | **371 passing**, 0 failures, `ruff` clean across 8 packages |
+| **Tests** | **374 passing**, 0 failures, `ruff` clean across 8 packages |
 | **Detector** | mAP50 **0.819 on real annotated sonar boxes** (UATD val) · 0.808 synthetic · calibrated at T=1.05, ECE 0.073 |
-| **Code** | 24,183 lines Python (12,716 library/API/edge · 5,069 scripts · 6,398 tests) · 7,956 lines frontend · 129 modules |
+| **Code** | 24,475 lines Python (12,749 library/API/edge · 5,281 scripts · 6,445 tests) · 8,091 lines frontend · 130 modules |
 | **Cloud dependency** | **None.** Zero network calls at inference |
 | **Input formats** | XTF · EdgeTech JSF · Lowrance SL2/SL3 · Humminbird DAT/SON · GeoTIFF · PNG/JPG |
 | **Output formats** | JSON (+ JSON Schema) · CSV · GeoJSON · KML · PDF |
@@ -98,7 +98,7 @@ flowchart TD
 
     subgraph L5["L5 · DRISHTI Console"]
         O --> P["FastAPI + WebSocket + SQLite"]
-        P --> Q["map · waterfall · evidence cards · review queue<br/>change detection · copilot · physics lab<br/>recovery routes · system health · 4 mission profiles"]
+        P --> Q["overview KPIs · map · waterfall · evidence cards<br/>review queue · change detection · copilot · physics lab<br/>recovery routes · system health · 4 mission profiles"]
     end
 
     F -.-> R["EDGE PATH<br/>ONNX · INT8 · Jetson / Pi<br/>offline, no network"]
@@ -124,6 +124,21 @@ so rather than opening a blank page.
 
 Or containerised: `docker compose up --build` (add `--profile postgis` for a shore station).
 
+Or onto the edge — one archive, one script:
+
+```bash
+.venv/Scripts/python scripts/pack_edge.py         # -> dist/sagar-netra-edge.tar.gz (36 MB)
+scp dist/sagar-netra-edge.tar.gz pi@<address>:~/
+# then on the Pi (64-bit Raspberry Pi OS):
+#   tar xzf sagar-netra-edge.tar.gz && cd sagar-netra && bash edge/setup_pi64.sh
+```
+
+The bundle carries the weights and the built console — neither is in git — with a SHA-256
+manifest, and **refuses to build** if `detector.onnx` is older than `detector.pt`, since the
+device would otherwise run a model the workstation already retired. `edge/setup_pi64.sh` asserts
+`aarch64`, installs from piwheels, repoints Brain A at the ONNX export and runs four acceptance
+checks; `edge/sagar-netra.service` makes it survive reboots.
+
 ### The 90-second judge demo
 
 ```bash
@@ -133,7 +148,7 @@ Or containerised: `docker compose up --build` (add `--profile postgis` for a sho
 narrates the whole flow on the bundled survey and prints the contact table:
 
 ```
-Done in 10 s: 1200 pings -> 18 tiles -> 17 raw detections -> 13 verified contacts
+Done in 10.2 s: 1200 pings -> 18 tiles -> 17 raw detections -> 13 verified contacts
 
 ID                   class           conf%   sev   H(m)  position
 SN-20260101-0002     ghost_net        96.8  83.7    1.3  13.05016, 80.35064
@@ -143,7 +158,7 @@ SN-20260101-0004     aircraft         64.6  79.8    3.0  13.04975, 80.35035
 SN-20260101-0007     container        50.8  77.3    2.4  13.04981, 80.35148
 SN-20260101-0008     mine_like        38.9  73.1    0.2  13.05011, 80.35117
 ...
-SN-20260101-0011     unknown_anomaly  11.5  62.7      -  13.05040, 80.35008
+SN-20260101-0011     unknown_anomaly   11.5  62.7      -  13.05040, 80.35008
 ```
 
 *(Output of the real-data-trained detector under honest calibration, T = 1.05 — the top
@@ -158,7 +173,7 @@ the autoencoder rather than the detector.
 with the results loaded. Upload another survey from the dashboard — in **LIVE STREAM** mode you
 watch detections arrive one by one over the WebSocket, as they would on a towed survey.
 
-### Training from scratch (all CPU, all offline)
+### Training from scratch (all offline; Brain A on GPU, Brains B/C and the verifier on CPU)
 
 ```bash
 python scripts/train_detector.py --data data/datasets/real_mix/data.yaml   # Brain A as deployed
@@ -166,8 +181,9 @@ python scripts/train_detector.py --data data/datasets/real_mix/data.yaml   # Bra
 #    build_klsg_dataset.py, build_real_mix.py; ~5 h on an RTX 4060 at workers=0.
 #    Plain train_detector.py reproduces the synthetic-only baseline and OVERWRITES
 #    the deployed real-data weights - back them up first.)
-python scripts/train_detector.py --data data/datasets/real_mix/data.yaml --seed 1 \
-#     --dest weights/detector_seed1.pt --name detector_realmix_seed1   # optional ensemble member
+# Optional extra ensemble member. --dest is REQUIRED: without it the run
+# defaults to weights/detector.pt and overwrites the deployed model.
+python scripts/train_detector.py --data data/datasets/real_mix/data.yaml --seed 1 --dest weights/detector_seed1.pt --name detector_realmix_seed1
 python scripts/train_segmenter.py --epochs 60        # Brain B  ~9 min
 python scripts/train_anomaly.py                      # Brain C  ~10 min
 python scripts/train_verifier.py --scenes 10         # Stage-2 verifier  ~2 min
@@ -328,8 +344,10 @@ A displayed "70%" now means roughly 70% of such detections are real.*
 - **Dimensions** — length × width from the footprint (mask-refined for nets), **height from the
   shadow**. Measured container: 6.0 × 2.5 × 2.4 m against a seeded 6.1 × 2.4 × 2.4 m.
 - **Position accuracy** — every contact carries an honest `position_accuracy_m` =
-  `2 × ground_res + layback_term + nav_uncertainty`, summed linearly because each term is a bias,
-  not independent noise: a recovery diver wants the conservative number.
+  `2 × ground_res + layback_term + nav_uncertainty + sound_speed_term`, the last being
+  `sv_uncertainty_frac × ground_range_m` (1% of range = 0.75 m at 75 m, so it grows across the
+  swath). Summed linearly because each term is a bias, not independent noise: a recovery diver
+  wants the conservative number.
 - **Entanglement Severity Index (0–100)** — a weighted, saturating blend, fully explainable
   because every contact carries its own breakdown:
 
@@ -382,10 +400,10 @@ Design system committed at [`web/DESIGN.md`](web/DESIGN.md).
 
 | Tab | What it does |
 |---|---|
-| **Overview** | Landing view: KPI tiles, severity distribution, class breakdown, priority action queue, physics evidence summary - served from the report's own summary block so console and reports cannot disagree |
-| **Map** | Contacts on satellite imagery, coloured by severity, with sensitive-zone GeoJSON overlays, a severity heatmap toggle, and click-through Evidence Cards with Confirm/Reject |
+| **Overview** | Landing view: KPI tiles, severity distribution, class breakdown, priority action queue, physics evidence summary — served from the report's own summary block so console and reports cannot disagree. A survey ingested from a nav-less image raises a **DECLARED GEOMETRY** banner and a `NAV DECLARED-LINE` stamp: those positions are correct relative to the operator-declared line, and the console says so rather than passing them off as surveyed |
+| **Map** | Contacts on satellite imagery, coloured by severity, with sensitive-zone GeoJSON overlays, a severity heatmap toggle, and auto-fit to wherever the survey actually is. Click-through Evidence Cards carry Confirm/Reject plus a free-text review note kept in the audit trail, and show the beam footprint (`along-track res ±`) and position budget bounding that contact |
 | **Waterfall** | The processed sonar image with detection boxes registered pixel-exactly over it, zoom, raw/enhanced toggle, click a box → contact detail |
-| **Contacts** | Dense ledger: thumbnail, class, confidence, severity swatch, L×W×H, depth, physics badges, review state, **recovery state**, and one-click download of all five report formats |
+| **Contacts** | Dense ledger: thumbnail, class, confidence, severity swatch, L×W×H, depth, physics badges, review state, **recovery state**, and one-click download of all five report formats. Filterable by class, confidence and **review status** (pending / confirmed / rejected) for triage |
 | **Recovery** | Retrieval-zone clustering and an optimised vessel tour with numbered waypoints and leg distances - the loop from sonar pixel to cleanup sortie |
 | **Physics Lab** | Three interactive acoustics models (height-from-shadow, resolution limits, build-a-seabed simulator) - every slider calls the deployed backend physics, not a JS re-derivation |
 | **Diff** | Change detection between two surveys — what is NEW since the last pass (the post-cyclone port-clearance feature) |
@@ -417,12 +435,14 @@ one detection pass re-scored four ways:
 **False alarms per km² drop 3.2× at held recall.** (Measured with the real-data-trained
 detector; the earlier synthetic-only stack showed 4.8× — the new detector proposes more
 candidates on synthetic scenes, so the gate works harder for a slightly smaller ratio.)
-Rows (c) and (d) coincide because consensus already suppresses 1–2-ping impulsive returns.
+Rows (c) and (d) coincide because no scored detection here was thinner than the persistence
+minimum — the temporal gate is the backstop for exactly the single-model operation the stack
+currently runs in.
 
 > **Read honestly:** these are *synthetic* held-out scenes. Synthetic targets are easier than real
 > debris in real clutter, so treat the absolute values as an upper bound and the **relative ladder**
 > as the result. Real-data detector numbers now exist (section 11a: 0.819 mAP50 on real annotated
-> boxes, 93.2% wreck-reach on 447 real images); a real-data version of *this ladder* still needs
+> boxes, and the right class reached on 359 of 385 real wreck images); a real-data ladder needs
 > an annotated side-scan survey corpus.
 
 ### Against a classical baseline — an honest negative result
@@ -511,18 +531,51 @@ A side-scan sonar produces 1–10 ping lines per second. The pipeline runs far a
 
 ### Models and verification
 
+**Detector accuracy, per domain.** "Accuracy" for a detector is not one number, so
+here is the whole picture — from [`docs/real_training.md`](docs/real_training.md), where the
+retrained candidate and the previous synthetic-only model were measured through one harness
+in one run:
+
+| Validation set | Label quality | Before (synthetic-only) | **After (real-data trained)** |
+|---|---|---|---|
+| **UATD** — real sonar | **human-annotated boxes** | 0.002 | **mAP50 0.819** |
+| KLSG — real side-scan | weak (measured extents) | 0.007 | mAP50 0.637 |
+| synth_xl — simulated | exact renderer truth | 0.701 | **mAP50 0.808** *(improved, not traded)* |
+| Mixed val (905 images, best epoch) | — | — | **mAP50 0.834** |
+
+At the final epoch on the mixed set: **precision 0.802, recall 0.809, mAP50-95 0.485**. The
+strict mAP50-95 is normal for small targets in sonar, where a few pixels of box slack costs a
+lot of IoU.
+
+**System-level accuracy**, which is what an operator actually experiences:
+
+| Measure | Before | After |
+|---|---|---|
+| KLSG val chips getting the right class (top-1) | 11.4% | **98.9%** (87/88) |
+| Full pipeline reaching `wreck`/`aircraft` on 385 real wreck images | 53/385 (13.8%) | **359/385 (93.2%)** |
+
+**Everything else, measured:**
+
 | Item | Result |
 |---|---|
-| Brain A detector (60 epochs, imgsz 640, RTX 4060) | mAP50 **0.834** mixed val; **0.819 real boxes** (UATD); 0.808 synthetic |
-| Training data | 7,838 images (92% real sonar; 88% with real human-drawn boxes), **12,616 real annotated boxes** |
+| Training data | 7,838 train images (92% real sonar: 6,895 UATD + 352 KLSG + 591 synthetic) carrying **11,596 real annotated boxes**; 12,616 across train+val |
+| Training run | YOLOv8n, 60 epochs, imgsz 640, batch 16, RTX 4060, **4.9 h** (dataloader-bound at `workers=0`) |
 | Brain B segmenter (60 epochs) | val Dice **0.924**; mask alignment verified to **0.02 px** |
-| Stage-2 verifier | held-out AUC **0.955**, accuracy **0.957** |
-| Confidence calibration | ECE **0.073**, T = 1.05 (refit after the real-data retrain) |
-| ONNX export parity | mAP50 delta **0.0000** vs PyTorch |
+| Brain C anomaly autoencoder | threshold auto-calibrated at train time (0.176 on the shipped checkpoint) |
+| Stage-2 verifier | held-out AUC **0.955**, accuracy **0.957**, 13 explicit physics features |
+| Confidence calibration | **ECE 0.073** at T = 1.05 — a displayed "70%" means ~70% of such contacts are real |
+| ONNX export parity | mAP50 delta **0.0000** vs PyTorch (dynamic batch, 905-image val) |
+| INT8 quantised | mAP50 **0.809** at **3.8 MB** (from 12.7 MB) |
 | Height from shadow | seeded 2.0 m recovered within 25%; 2.4 m container measured at 2.36 m |
 | Geotag accuracy | within **6%** of seeded across-track offset |
 | Slant↔ground round-trip | **6×10⁻¹² px** |
 | End-to-end demo (full triple-brain + verifier) | 1200 pings → 18 tiles → 17 raw detections → **13 contacts + 5 reports in ~10 s** |
+
+> **Where these numbers stop.** UATD is *multibeam forward-looking* sonar, so mAP50 0.819
+> demonstrates competence on **real acoustics**, not on side-scan geometry specifically. The
+> side-scan evidence is the 93.2% class-reach, which is against folder-level truth rather than
+> boxes. A true side-scan mAP needs an annotated side-scan corpus — which is exactly what the
+> console's review loop collects.
 
 ![Detections](docs/images/detections.png)
 
@@ -568,7 +621,8 @@ A mission profile re-weights the severity hazard table and the detector confiden
 ## 8. Data strategy
 
 **Training is real-first, synthetic-supported.** The deployed detector is trained on
-`data/datasets/real_mix` — 6,895 real UATD images with 12,616 human-annotated boxes (CC BY 4.0)
+`data/datasets/real_mix` — 6,895 real UATD training images with 11,596 human-annotated boxes
+(12,616 across train and val; CC BY 4.0)
 plus 352 real KLSG side-scan chips with measured weak labels, blended with 591 synthetic chips.
 The synthetic factory remains the source for the segmenter, the anomaly brain and the physics
 verifier: it renders physically correct imagery through the *same* preprocessing chain used at
@@ -580,8 +634,8 @@ produce. Isotropic scaling, translation and along-track flips are valid. The rul
 explicitly in the training script so an upstream default change cannot silently violate it.
 
 **The real-data path is scripted, licensed — and executed.** `python scripts/download_datasets.py --list`
-prints the table: Marine Debris FLS · UATD · SCTD/SCTD2 · Seabed Objects-KLSG · AI4Shipwrecks ·
-SWDD · Marine PULSE · UXO — each with its license and role. UATD and KLSG have been downloaded,
+prints the table of eight: Marine Debris FLS · UATD · SCTD · Seabed Objects-KLSG ·
+AI4Shipwrecks · SWDD · Marine PULSE · UXO — each with its license and role. UATD and KLSG have been downloaded,
 converted (`build_uatd_dataset.py`, `build_klsg_dataset.py`, `build_real_mix.py`) and trained on;
 UATD's `Test_2` split is reserved untouched as a final holdout. The active-learning flywheel adds
 side-scan-specific labels from every analyst review.
@@ -602,6 +656,7 @@ range at 8 m altitude.
 | `GET` | `/api/jobs` · `/api/jobs/{id}` | Job list / one job snapshot |
 | `WS` | `/api/jobs/{id}/progress` | Live progress; in stream mode, per-detection events |
 | `GET` | `/api/surveys` | Processed surveys |
+| `DELETE` | `/api/surveys/{name}` | Remove a survey and its contacts (console hygiene; report files on disk are kept) |
 | `GET` | `/api/contacts` | Filter by `survey`, `cls`, `min_conf`, `min_sev`, `review`, `limit` |
 | `GET` | `/api/contacts/{id}` | One contact, full record |
 | `POST` | `/api/contacts/{id}/review` | Confirm / reject (feeds the retraining flywheel) |
@@ -631,10 +686,10 @@ range at 8 m altitude.
 | `geoscribe/` | L4 | Contact model, geotagging, severity index, 5 report writers, clustering + routing |
 | `api/` | L5 | FastAPI app, SQLite store, batch + streaming processing, diff, copilot |
 | `web/` | L5 | React/Vite/Leaflet console + committed design system |
-| `edge/` | — | ONNX + INT8 export with parity checks (dynamic batch), benchmarks, runbooks: Raspberry Pi 5, Hailo AI HAT, Jetson TensorRT |
+| `edge/` | — | ONNX + INT8 export with parity checks (dynamic batch), benchmarks, a 64-bit Pi bring-up script + systemd unit, runbooks: Raspberry Pi 5, Hailo AI HAT, Jetson TensorRT |
 | `configs/` | — | 7 YAML files + 4 mission profiles — every tunable, commented, with units |
-| `scripts/` | — | 20 CLIs: training, calibration, evaluation, export, demo, dataset download + real-dataset builders |
-| `tests/` | — | 43 files, **371 tests** |
+| `scripts/` | — | 21 CLIs: training, calibration, evaluation, export, demo, dataset download, real-dataset builders, edge packaging |
+| `tests/` | — | 43 files, **374 tests** |
 | `docs/` | — | Analysis reports (ablation, baseline comparison, clutter sweep, real data, real training) + README figures |
 
 **Documentation index**
@@ -658,7 +713,7 @@ range at 8 m altitude.
 
 ## 11. Engineering quality
 
-- **371 tests, zero failures** — unit tests per module plus end-to-end acceptance tests per
+- **374 tests, zero failures** — unit tests per module plus end-to-end acceptance tests per
   milestone, including a full raw-XTF → reports run.
 - **`ruff` clean** across all 8 packages (E, F, W, I, N, UP, B).
 - **Every stage config-driven** — no magic numbers in code; defaults live in one place and the YAML
@@ -687,7 +742,7 @@ aircraft from L-3 Klein Associates, EdgeTech, Lcocean, Hydro-tech Marine and Tri
 **What transfers:** all 447 parse and run the complete signal chain — bottom tracking,
 slant correction, despeckle, CLAHE, tiling — with no per-format handling and no crashes.
 
-**The detector was then retrained on real data** — 7,838 images (88% real sonar:
+**The detector was then retrained on real data** — 7,838 images (92% real sonar; 88% UATD:
 UATD's 12,616 human-annotated boxes plus KLSG chips), 60 GPU epochs. Before/after on
 this same corpus, same harness ([`docs/real_training.md`](docs/real_training.md)):
 
