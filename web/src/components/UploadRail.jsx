@@ -16,7 +16,7 @@ const needsGeometry = (name) =>
 
 // Right-hand rail: drag-drop upload, live WebSocket progress, survey refresh.
 // Falls back to 1 s polling of GET /api/jobs/{id} if the socket fails.
-export default function UploadRail({ onJobDone, pushToast }) {
+export default function UploadRail({ onJobDone, pushToast, canUpload = true }) {
   const [jobs, setJobs] = useState([])
   const [drag, setDrag] = useState(false)
   const [mode, setMode] = useState('batch') // 'batch' | 'stream' (live replay)
@@ -247,7 +247,7 @@ export default function UploadRail({ onJobDone, pushToast }) {
       <div className="rail-section">
         <h2 className="rail-title">Survey Ingest</h2>
         <div
-          className={drag ? 'dropzone drag' : 'dropzone'}
+          className={`dropzone${drag ? ' drag' : ''}${canUpload ? '' : ' disabled'}`}
           onDragOver={(e) => {
             e.preventDefault()
             setDrag(true)
@@ -256,19 +256,29 @@ export default function UploadRail({ onJobDone, pushToast }) {
           onDrop={(e) => {
             e.preventDefault()
             setDrag(false)
-            handleFiles(e.dataTransfer.files)
+            if (canUpload) handleFiles(e.dataTransfer.files)
           }}
-          onClick={() => fileRef.current?.click()}
+          onClick={() => canUpload && fileRef.current?.click()}
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click()
+            if (canUpload && (e.key === 'Enter' || e.key === ' ')) fileRef.current?.click()
           }}
         >
           <div className="dz-text">
-            Drop a sonar file here
-            <br />
-            <span className="muted">or click to browse</span>
+            {canUpload ? (
+              <>
+                Drop a sonar file here
+                <br />
+                <span className="muted">or click to browse</span>
+              </>
+            ) : (
+              <>
+                Ingest not permitted
+                <br />
+                <span className="muted">your role cannot upload surveys</span>
+              </>
+            )}
           </div>
           <div className="dz-formats">.xtf · .jsf · .tif · .png</div>
           <input

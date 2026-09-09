@@ -20,7 +20,16 @@ const SORTS = {
 // Header keys that read best low-to-high on first click.
 const ASCENDING_FIRST = new Set(['class', 'id', 'action'])
 const REPORT_FMTS = ['json', 'csv', 'geojson', 'kml', 'pdf']
-const BREAKDOWN_KEYS = ['hazard', 'size', 'height', 'depth', 'proximity']
+// Severity factors, with the weights geoscribe/severity.py:40-46 actually
+// applies. Showing the weight matters: a contact can score 1.00 on proximity
+// and still sit mid-band, and without the multiplier that reads as a bug.
+const BREAKDOWN_KEYS = [
+  { key: 'hazard', label: 'hazard', weight: 0.4 },
+  { key: 'size', label: 'size', weight: 0.15 },
+  { key: 'height', label: 'height', weight: 0.1 },
+  { key: 'depth', label: 'depth', weight: 0.15 },
+  { key: 'proximity', label: 'proximity', weight: 0.2 },
+]
 // Recovery workflow ring: flagged -> assigned -> retrieved (-> flagged to undo).
 const NEXT_RECOVERY = { flagged: 'assigned', assigned: 'retrieved', retrieved: 'flagged' }
 
@@ -28,18 +37,28 @@ function BreakdownBars({ breakdown }) {
   const b = breakdown || {}
   return (
     <div className="breakdown">
-      {BREAKDOWN_KEYS.map((k) => {
-        const v = Number(b[k] || 0)
+      {BREAKDOWN_KEYS.map(({ key, label, weight }) => {
+        // The backend stores every factor as a 0-1 fraction (severity.py rounds
+        // to 3dp). Rendering it straight into a percentage width drew every bar
+        // at under 1% and labelled the strongest factor "1" - the panel meant to
+        // explain the score showed five empty troughs instead.
+        const v = Math.min(Math.max(Number(b[key] || 0), 0), 1)
         return (
-          <div key={k} className="bk-row">
-            <span className="bk-label mono">{k}</span>
+          <div key={key} className="bk-row">
+            <span className="bk-label mono">{label}</span>
             <div className="bk-bar">
-              <div className="bk-fill" style={{ width: `${Math.min(v, 100)}%` }} />
+              <div className="bk-fill" style={{ width: `${v * 100}%` }} />
             </div>
-            <span className="bk-value mono">{v.toFixed(0)}</span>
+            <span className="bk-value mono">{(v * 100).toFixed(0)}</span>
+            <span className="bk-weight mono" title={`this factor is worth ${Math.round(weight * 100)}% of the severity score`}>
+              &times;{weight.toFixed(2)}
+            </span>
           </div>
         )
       })}
+      <p className="bk-caption">
+        Each factor scores 0-100 on its own; severity is their weighted sum.
+      </p>
       <div className="bk-layer">
         Nearest sensitive layer:{' '}
         <b>
@@ -85,7 +104,15 @@ function PositionAccuracy({ value }) {
   )
 }
 
-export default function ContactsTable({ contacts, survey, onReview, pushToast }) {
+export default function ContactsTable({
+  contactState = 'ready',
+  contacts,
+  survey,
+  onReview,
+  pushToast,
+  canReview = true,
+  canRecover = true,
+}) {
   const [sortKey, setSortKey] = useState('severity')
   const [dir, setDir] = useState(-1)
   const [expandedId, setExpandedId] = useState(null)
@@ -121,6 +148,27 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
     key === sortKey ? (dir === 1 ? 'ascending' : 'descending') : undefined
 
   const review = async (c, status) => {
+    // Deleting a survey asks first; rejecting a contact did not, though it is
+    // the same kind of act - a judgement written to the record that the console
+    // gives no way to take back. A rejected critical contact is one an operator
+    // stops seeing, so the higher its severity the more this matters.
+    if (status === 'rejected') {
+      const stakes =
+        c.severity >= 75
+          ? `
+
+${c.id} is a HIGH-priority contact (severity ${Math.round(c.severity)}).`
+          : ''
+      if (
+        !window.confirm(
+          `Reject ${c.id} as not a real object?${stakes}
+
+It will be filtered out of the operational views.`,
+        )
+      ) {
+        return
+      }
+    }
     setBusyId(c.id)
     try {
       onReview(await postReview(c.id, status))
@@ -156,6 +204,17 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
 
   return (
     <div className="contacts-wrap">
+      <header className="view-head">
+        <h2 className="view-title">Contacts</h2>
+        <p className="view-sub">
+          Every object the pipeline is confident enough to report, ranked by
+          severity. <b>Severity</b> is how much this object matters (0-100,
+          weighing what it is, how big, how deep and what it sits near);{' '}
+          <b>confidence</b> is how sure the model is that it is really there.
+          They are independent — a certain tyre still scores low. Open a row to
+          see how its severity was built.
+        </p>
+      </header>
       <div className="contacts-toolbar">
         <span className="ctl-label">Download report</span>
         {REPORT_FMTS.map((fmt) => (
@@ -172,9 +231,24 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
       </div>
 
       {sorted.length === 0 ? (
+        // "Still loading", "nothing here" and "the request failed" used to be
+        // the same grey box, so a slow fetch and a broken backend both read as
+        // a clean survey with nothing in it.
         <EmptyState
-          title="No contacts to show"
-          hint="This survey has no contacts matching the current class / confidence filters."
+          title={
+            contactState === 'loading'
+              ? 'Loading contacts'
+              : contactState === 'error'
+                ? 'Could not load contacts'
+                : 'No contacts to show'
+          }
+          hint={
+            contactState === 'loading'
+              ? `Reading ${survey} from the contact store.`
+              : contactState === 'error'
+                ? 'The request to the backend failed. The error notice has the detail; the console is not saying this survey is empty.'
+                : 'This survey has no contacts matching the current class / confidence filters.'
+          }
         />
       ) : (
         <div className="table-scroll">
@@ -260,8 +334,20 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                     </td>
                     <td>
                       {c.recommended_action ? (
-                        <span className="rec-action" title={c.recommended_action}>
+                        <span
+                          className={`rec-action${
+                            c.action_rule === 'always_override' ? ' urgent' : ''
+                          }`}
+                          title={`${c.recommended_action}
+
+rule: ${
+                            c.action_rule || 'base'
+                          }${c.action_requires ? ` · needs '${c.action_requires}'` : ''}`}
+                        >
                           {c.recommended_action}
+                          {c.action_rule && c.action_rule !== 'base' && (
+                            <span className="rule-tag">{c.action_rule.replace(/_/g, ' ')}</span>
+                          )}
                         </span>
                       ) : (
                         <span className="muted">—</span>
@@ -280,6 +366,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         <span className={`rc rc-${c.recovery || 'flagged'}`}>
                           {c.recovery || 'flagged'}
                         </span>
+                        {canRecover && (
                         <button
                           type="button"
                           className="btn small"
@@ -289,10 +376,12 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         >
                           Advance
                         </button>
+                        )}
                       </div>
                     </td>
                     <td className="actions-cell">
                       <div className="row-actions">
+                        {canReview && (
                         <button
                           type="button"
                           className="btn ok small"
@@ -301,6 +390,8 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         >
                           Confirm
                         </button>
+                        )}
+                        {canReview && (
                         <button
                           type="button"
                           className="btn danger small"
@@ -309,6 +400,7 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                         >
                           Reject
                         </button>
+                        )}
                         <a
                           className="btn link small"
                           href={evidenceUrl(c.id)}
@@ -324,6 +416,13 @@ export default function ContactsTable({ contacts, survey, onReview, pushToast })
                     <tr className="expand-row">
                       <td colSpan={13}>
                         <BreakdownBars breakdown={c.severity_breakdown} />
+                        {c.physics && c.physics.physics_violation && (
+                          <p className="pop-violation">
+                            <b>Physics check failed:</b>{' '}
+                            {c.physics.violation_reason ||
+                              'the return geometry is not consistent with this class'}
+                          </p>
+                        )}
                         <PositionAccuracy value={c.position_accuracy_m} />
                       </td>
                     </tr>

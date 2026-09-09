@@ -98,6 +98,7 @@ class StubDetector:
 def client(tmp_path_factory):
     root = tmp_path_factory.mktemp("missions_api")
     app = create_app(
+        require_auth=False,  # exercise the pipeline, not the RBAC layer (tests/test_auth.py)
         repo=ContactRepo(root / "contacts.db"),
         upload_dir=root / "uploads",
         output_root=root / "outputs",

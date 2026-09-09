@@ -211,6 +211,14 @@ export default function RecoveryPlanner({ survey, contacts, pushToast }) {
 
   return (
     <div className="rp">
+      <header className="view-head">
+        <h2 className="view-title">Recovery planning</h2>
+        <p className="view-sub">
+          Groups nearby contacts into retrieval zones and orders them into the
+          shortest vessel route, so one sortie clears a cluster instead of
+          crossing the survey box repeatedly.
+        </p>
+      </header>
       <div className="rp-toolbar">
         <label className="ctl">
           <span className="ctl-label">Scope</span>

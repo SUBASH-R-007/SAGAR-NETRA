@@ -2,7 +2,32 @@
 // Every helper throws an Error with a readable message on non-2xx responses;
 // callers wrap in try/catch and surface a toast.
 
-async function handle(res) {
+// Sessions last 12 hours. Before this existed, expiry mid-shift showed up as a
+// six-second toast reading "401: Not authenticated" and the action the operator
+// had just taken simply had not happened - no re-login, no indication that the
+// console was now read-only in practice. App.jsx registers a handler here so
+// one expiry is handled once, centrally, instead of at twenty call sites.
+let onUnauthorized = null
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn
+}
+
+// What we say to a person, per status. The raw code and the server's detail
+// are still attached to the error for the console and for callers that want
+// them; they are not what a user should have to read.
+const HUMAN = {
+  401: 'Your session has expired. Please sign in again.',
+  403: 'Your role does not have permission to do that.',
+  404: 'That item no longer exists - it may have been deleted.',
+  409: 'Something else changed this first. Reload and try again.',
+  413: 'That file is too large for this deployment to accept.',
+  422: 'The server could not read that request.',
+  500: 'The server hit an internal error. Check the backend log.',
+  502: 'The backend is unreachable.',
+  503: 'The backend is starting up or overloaded. Try again shortly.',
+}
+
+async function handle(res, opts = {}) {
   if (!res.ok) {
     let detail = res.statusText || `HTTP ${res.status}`
     try {
@@ -11,15 +36,27 @@ async function handle(res) {
     } catch {
       /* body was not JSON */
     }
-    throw new Error(`${res.status}: ${detail}`)
+    const err = new Error(HUMAN[res.status] || detail)
+    err.status = res.status
+    err.detail = detail
+    if (res.status === 401 && !opts.skipAuthHandler && onUnauthorized) {
+      onUnauthorized()
+    }
+    throw err
   }
   return res.json()
 }
 
-export const getJSON = (url) => fetch(url).then(handle)
+// The session cookie is HttpOnly — JavaScript cannot read it, which is the
+// point — so every request must opt in to sending it. 'same-origin' rather
+// than 'include': the console is served by the same FastAPI app it calls.
+const CREDS = { credentials: 'same-origin' }
+
+export const getJSON = (url) => fetch(url, CREDS).then(handle)
 
 export const postJSON = (url, body) =>
   fetch(url, {
+    ...CREDS,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -35,7 +72,7 @@ export const fetchContacts = (survey, limit = 500) =>
 export const fetchLayers = () => getJSON('/api/layers')
 
 export const deleteSurvey = (name) =>
-  fetch(`/api/surveys/${encodeURIComponent(name)}`, { method: 'DELETE' }).then(handle)
+  fetch(`/api/surveys/${encodeURIComponent(name)}`, { ...CREDS, method: 'DELETE' }).then(handle)
 
 export const fetchJobs = () => getJSON('/api/jobs')
 
@@ -76,7 +113,7 @@ export async function uploadFile(file, mode = 'batch', mission = '', geometry = 
       if (v !== null && v !== undefined && v !== '') form.append(k, String(v))
     }
   }
-  return fetch('/api/upload', { method: 'POST', body: form }).then(handle)
+  return fetch('/api/upload', { ...CREDS, method: 'POST', body: form }).then(handle)
 }
 
 // ------------------------------------------------------------------ urls --
@@ -149,3 +186,23 @@ export const fetchShadow = (altitude, height, groundRange) =>
 export const fetchSimClasses = () => getJSON('/api/physics/classes')
 
 export const simulateScene = (body) => postJSON('/api/physics/simulate', body)
+
+// ---- auth ----
+// Enforcement lives on the API; these helpers only tell the console what to
+// render. A user who bypasses the UI still hits the same guards.
+
+// Both of these are allowed to 401 as part of normal operation - a mistyped
+// password, and the bootstrap probe on a console with no session yet - so they
+// opt out of the global expiry handler. Login.jsx and App.jsx handle their own.
+export const login = (username, password) =>
+  fetch('/api/auth/login', {
+    ...CREDS,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  }).then((res) => handle(res, { skipAuthHandler: true }))
+
+export const logout = () => postJSON('/api/auth/logout', {})
+
+export const fetchMe = () =>
+  fetch('/api/auth/me', CREDS).then((res) => handle(res, { skipAuthHandler: true }))

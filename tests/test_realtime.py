@@ -273,6 +273,7 @@ def test_stream_survey_rejects_bad_windows(survey_file) -> None:
 def client(tmp_path_factory: pytest.TempPathFactory):
     root = tmp_path_factory.mktemp("realtime_api")
     app = create_app(
+        require_auth=False,  # exercise the pipeline, not the RBAC layer (tests/test_auth.py)
         repo=ContactRepo(root / "contacts.db"),
         upload_dir=root / "uploads",
         output_root=root / "outputs",

@@ -46,8 +46,12 @@ function HeatLayer({ points, enabled }) {
   return null
 }
 
-export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
+export default function MapView({
+  contacts, onReview, pushToast, hasSurvey, canReview, permissions,
+  contactState = 'ready',
+}) {
   const [layers, setLayers] = useState({})
+  const [layerError, setLayerError] = useState(false)
   const [visible, setVisible] = useState({})
   const [heat, setHeat] = useState(false)
 
@@ -60,7 +64,10 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
         setVisible(Object.fromEntries(Object.keys(docs).map((k) => [k, true])))
       })
       .catch(() => {
-        /* sensitive layers are optional — the map still works without them */
+        // Not cosmetic: configs/actions.yaml branches the recommended action on
+        // proximity to these zones, so a map that silently drops them shows a
+        // ghost net in a turtle sanctuary as an ordinary ghost net. Say so.
+        if (alive) setLayerError(true)
       })
     return () => {
       alive = false
@@ -74,6 +81,14 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
 
   return (
     <div className="map-wrap">
+      <header className="view-head">
+        <h2 className="view-title">Contact map</h2>
+        <p className="view-sub">
+          Every detected object placed on the chart, coloured by severity. The
+          dashed outlines are protected habitats and shipping lanes — a contact
+          inside one changes who has to be notified before anyone recovers it.
+        </p>
+      </header>
       <MapContainer center={CENTER} zoom={13} className="map" preferCanvas>
         <MapResize />
         <FitToContacts contacts={contacts} />
@@ -120,7 +135,13 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
             }}
           >
             <Popup maxWidth={300} className="contact-popup">
-              <ContactPopover contact={c} onReview={onReview} pushToast={pushToast} />
+              <ContactPopover
+                contact={c}
+                onReview={onReview}
+                pushToast={pushToast}
+                canReview={canReview}
+                permissions={permissions}
+              />
             </Popup>
           </CircleMarker>
         ))}
@@ -170,8 +191,20 @@ export default function MapView({ contacts, onReview, pushToast, hasSurvey }) {
           />
         </div>
       )}
+      {layerError && (
+        <p className="map-layer-warning">
+          Protected-habitat and shipping-lane outlines could not be loaded. Contacts
+          still show, but zone proximity is not being drawn on this map.
+        </p>
+      )}
       {hasSurvey && contacts.length === 0 && (
-        <div className="map-empty small">No contacts match the current filters.</div>
+        <div className="map-empty small">
+          {contactState === 'loading'
+            ? 'Loading contacts…'
+            : contactState === 'error'
+              ? 'Contacts could not be loaded — this is a failed request, not an empty survey.'
+              : 'No contacts match the current filters.'}
+        </div>
       )}
     </div>
   )

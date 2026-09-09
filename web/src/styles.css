@@ -473,12 +473,16 @@ p {
   width: 140px;
 }
 
+/* --ink-faint (#8A94A0) on --paper measures 2.79:1, under the 4.5:1 floor, and
+   this rule is every form label in the console - both sign-in fields included.
+   --ink-dim is the existing secondary ink and clears it at 5.74:1, so nothing
+   new enters the palette. */
 .ctl-label {
   font-family: var(--mono);
   font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .ctl-value {
@@ -662,8 +666,11 @@ input[type='checkbox'] {
   flex-wrap: wrap;
 }
 
+/* The off state of a physics cue. Same contrast problem, and here it also
+   carried meaning: present vs absent was colour alone. PhysicsBadges now spells
+   the state out in the glyph, so this only has to be readable. */
 .cue {
-  color: var(--ink-faint);
+  color: var(--ink-dim);
   border-color: var(--hairline);
 }
 
@@ -1108,7 +1115,7 @@ input[type='checkbox'] {
   font-size: var(--fs-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink-faint);
+  color: var(--ink-dim);
 }
 
 .bk-bar {
@@ -1127,7 +1134,24 @@ input[type='checkbox'] {
   width: 32px;
   text-align: right;
   font-size: var(--fs-detail);
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
+}
+
+/* The weight each factor carries into the sum. Dimmer than the score itself:
+   it is the constant, not the measurement. */
+.bk-weight {
+  width: 38px;
+  text-align: right;
+  font-size: var(--fs-micro);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+
+.bk-caption {
+  margin: 2px 0 0;
+  font-size: var(--fs-detail);
+  color: var(--ink-dim);
 }
 
 .bk-layer {
@@ -1147,8 +1171,37 @@ input[type='checkbox'] {
   flex: 1;
   min-height: 0;
   display: flex;
+  /* Column, not row: the view title block is a sibling of the map, and a row
+     axis put it beside the map instead of above it. */
+  flex-direction: column;
+  gap: 12px;
   padding: 16px 24px;
   background: var(--paper);
+}
+
+/* Inside a wrapper that already pads, the title block must not pad again. */
+.map-wrap .view-head,
+.wf .view-head,
+.contacts-wrap .view-head {
+  flex: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.wf .view-head,
+.contacts-wrap .view-head,
+.diff .view-head,
+.rp .view-head {
+  padding: 12px 24px 0;
+}
+
+@media (max-width: 900px) {
+  .wf .view-head,
+  .contacts-wrap .view-head,
+  .diff .view-head,
+  .rp .view-head {
+    padding: 12px 16px 0;
+  }
 }
 
 .map {
@@ -1742,15 +1795,24 @@ label.legend-row {
   color: var(--ink-dim);
 }
 
-.toasts {
+/* One fixed stack holding two live regions (polite + assertive). They are
+   separate elements for assistive tech but must not be two overlapping fixed
+   boxes, hence the shared wrapper. */
+.toast-stack {
   position: fixed;
   bottom: 24px;
   left: 24px;
   z-index: 2000;
   display: flex;
-  flex-direction: column;
+  flex-direction: column-reverse;
   gap: 8px;
   max-width: 400px;
+}
+
+.toast-region {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .toast {
@@ -1770,6 +1832,26 @@ label.legend-row {
 
 .toast-error {
   border-left-color: var(--error);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+/* Errors persist, so they need a way out. */
+.toast-dismiss {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--ink-dim);
+}
+
+.toast-dismiss:hover {
+  color: var(--ink);
 }
 
 @keyframes toast-in {
@@ -1854,4 +1936,133 @@ label.legend-row {
   .diff-result {
     padding: 16px;
   }
+}
+
+/* ── narrow viewports ────────────────────────────────────────────────────────
+   Below ~900px the console used to render its header, nav and footer around an
+   empty hole: `.body` is a flex row, `.rail` is a fixed 300px that never
+   stacked, and the only breakpoint (980px) just re-widthed the rail. Measured
+   at 523px, <main> came out 283px wide and 0px tall.
+
+   This is not a mobile layout and does not pretend to be one - a thirteen-column
+   triage table is not a phone screen. It is the guarantee that the console
+   degrades honestly instead of vanishing when someone resizes a window on
+   stage or mirrors to a projector at an unexpected aspect. */
+
+@media (max-width: 900px) {
+  /* Stacked, and the stack scrolls as one column. Capping the two panes to
+     fractions of the viewport instead just moved the failure: content at its
+     320px floor plus a 45vh rail overflowed `.body`, and since `.app` clips,
+     the bottom of the ingest ledger became unreachable. */
+  .body {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  /* The rail becomes a band under the content rather than a column beside it.
+     It keeps its contents: the ingest ledger is job history an analyst is
+     entitled to read, so this may never become display:none. */
+  .rail {
+    width: auto;
+    flex: none;
+    max-height: none;
+    overflow-y: visible;
+    border-left: 0;
+    border-top: 1px solid var(--hairline-2);
+  }
+
+  .content {
+    flex: none;
+    min-height: 420px;
+    overflow: visible;
+  }
+
+  /* `.app` clips overflow, so a single-line strip silently ate the sign-out
+     button and the A-/A/A+ control at narrow widths. Since the font-size choice
+     persists to localStorage, losing the control at A+ was a one-way trap. */
+  .govt-strip {
+    height: auto;
+    min-height: 30px;
+    flex-wrap: wrap;
+    padding: 4px 16px;
+  }
+
+  .wf-body {
+    flex-direction: column;
+  }
+
+  .wf-panel {
+    width: auto;
+    max-height: 45%;
+  }
+}
+
+/* Fixed heights that could not shrink on a short viewport, independent of the
+   width breakpoint above. MapResize.jsx already runs a ResizeObserver into
+   Leaflet's invalidateSize(), so the map follows without any JS change. */
+.rp-map {
+  height: min(380px, 45vh);
+  min-height: 220px;
+}
+
+.wf-scroll {
+  min-width: 280px;
+}
+
+/* Empty states can now offer a way out, not just describe one. */
+.empty-action {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* ── per-view title block ────────────────────────────────────────────────────
+   Overview, Copilot and Physics Lab already opened with a plain-language line;
+   Map, Waterfall and Contacts — the three a non-specialist needs it most —
+   opened with a toolbar and nothing else. Waterfall was the sharpest case: a
+   greyscale stripe and "1200 pings · 2024 cols", with the port|starboard
+   geometry documented only in a source comment. */
+
+.view-head {
+  padding: 12px 24px 0;
+  max-width: 78ch;
+}
+
+.view-title {
+  margin: 0;
+  font-family: var(--display);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.view-sub {
+  margin: 4px 0 0;
+  font-size: var(--fs-detail);
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.view-sub b {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+@media (max-width: 900px) {
+  .view-head {
+    padding: 12px 16px 0;
+  }
+}
+
+/* Why you are looking at a login screen you did not ask for. */
+.login-expired {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline-2);
+  border-left: 3px solid var(--saffron);
+  background: var(--saffron-wash);
+  color: var(--ink);
 }

@@ -44,8 +44,12 @@ function RowsTable({ rows }) {
   )
 }
 
-export default function Copilot({ pushToast }) {
-  const [log, setLog] = useState([])
+// `log` is owned by App, not by this component. /api/copilot is stateless -
+// there is no history endpoint - so the transcript lives in exactly one place,
+// and a tab switch used to be that place being unmounted. Asking three
+// questions, glancing at the map and coming back returned an empty greeting
+// screen with the user's own questions gone.
+export default function Copilot({ pushToast, log, setLog }) {
   const [q, setQ] = useState('')
   const [busy, setBusy] = useState(false)
   const endRef = useRef(null)

@@ -6,7 +6,17 @@ import SeverityChip from './SeverityChip'
 
 // Shared contact card: used inside map popups (thumbnail) and in the
 // waterfall side panel (full evidence card).
-export default function ContactPopover({ contact, onReview, pushToast, showEvidence = false }) {
+export default function ContactPopover({
+  contact,
+  onReview,
+  pushToast,
+  showEvidence = false,
+  canReview = true,
+  permissions = null,
+} ) {
+  // null = caller did not pass permissions (e.g. an older call site): assume
+  // capable rather than showing a misleading restriction notice.
+  const canAct = (needed) => permissions === null || permissions.includes(needed)
   const [busy, setBusy] = useState(false)
   const [notes, setNotes] = useState('')
   const c = contact
@@ -49,7 +59,7 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         <span>Depth</span>
         <b className="mono">{fmtMeters(c.depth_m)}</b>
         <span>Along-track res</span>
-        <b className="mono" title="Beam footprint at this range - the resolution floor under length_m">
+        <b className="mono" title="How wide the sonar beam is at this range. The contact cannot be measured finer than this, so it is the error bar on the length.">
           {c.dims && c.dims.along_track_resolution_m != null
             ? `±${c.dims.along_track_resolution_m.toFixed(2)} m`
             : '—'}
@@ -58,12 +68,42 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         <b className="mono">
           {c.position_accuracy_m != null ? `${c.position_accuracy_m.toFixed(1)} m` : '—'}
         </b>
-        <span>Brains</span>
-        <b>{c.brains && c.brains.length ? c.brains.join(' · ') : '—'}</b>
+        <span>Detectors agreed</span>
+        <b title="A = object detector, B = shape segmenter, C = anomaly finder. They vote independently; more agreement is stronger evidence.">
+          {c.brains && c.brains.length ? `${c.brains.length} of 3 · ${c.brains.join(' · ')}` : '—'}
+        </b>
         <span>Review</span>
         <b className={`rv rv-${c.review}`}>{c.review}</b>
       </div>
       <PhysicsBadges physics={c.physics} />
+      {c.physics && c.physics.physics_violation && (
+        <p className="pop-violation">
+          <b>Physics check failed:</b>{' '}
+          {c.physics.violation_reason || 'the return geometry is not consistent with this class'}
+        </p>
+      )}
+      {c.recommended_action && (
+        <div
+          className={`pop-action${c.action_rule === 'always_override' ? ' urgent' : ''}`}
+        >
+          <span className="pop-action-label">
+            Recommended action
+            {c.action_rule && c.action_rule !== 'base' && (
+              <span className="rule-tag">{c.action_rule.replace(/_/g, ' ')}</span>
+            )}
+          </span>
+          <p>{c.recommended_action}</p>
+          {/* Every role sees the advice; only a role holding the permission is
+              offered the control. Saying so is better than a silent absence. */}
+          {c.action_requires && !canAct(c.action_requires) && (
+            <p className="pop-action-gate mono">
+              requires ‘{c.action_requires}’ permission — your role can view this
+              recommendation but not carry it out
+            </p>
+          )}
+        </div>
+      )}
+      {canReview && (
       <input
         className="pop-notes"
         type="text"
@@ -73,7 +113,11 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         onChange={(e) => setNotes(e.target.value)}
         aria-label="Review note"
       />
+      )}
       <div className="pop-actions">
+        {/* Hiding these is a courtesy: the API refuses the call regardless. */}
+        {canReview && (
+          <>
         <button
           type="button"
           className="btn ok"
@@ -90,6 +134,8 @@ export default function ContactPopover({ contact, onReview, pushToast, showEvide
         >
           Reject
         </button>
+          </>
+        )}
         <a className="btn link" href={evidenceUrl(c.id)} target="_blank" rel="noreferrer">
           Evidence
         </a>

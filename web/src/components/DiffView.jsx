@@ -93,6 +93,17 @@ export default function DiffView({ surveys, pushToast }) {
 
   return (
     <div className="diff">
+      {/* "Diff" is a programmer's word. The tab has to keep it - it is what the
+          endpoint and the reports call this - but the screen should say what it
+          means before a juror has to guess. */}
+      <header className="view-head">
+        <h2 className="view-title">Change detection</h2>
+        <p className="view-sub">
+          Compare two surveys of the same water taken at different times. What
+          appeared, what went, what stayed — the evidence that a stretch of
+          seabed is accumulating debris rather than merely having some.
+        </p>
+      </header>
       <div className="diff-toolbar">
         <label className="ctl">
           <span className="ctl-label">Baseline (A)</span>
